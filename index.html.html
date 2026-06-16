@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מערכת בונוסים - פריפיט ומובמנט</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #FAF8F4;
+    --surface: #FFFFFF;
+    --border: #E4DFD3;
+    --border-strong: #CFC7B4;
+    --text: #2B2A26;
+    --text-muted: #7A766B;
+    --accent-sales: #B5601F;
+    --accent-sales-bg: #F3E6D6;
+    --accent-service: #1F6B5C;
+    --accent-service-bg: #DDEDE7;
+    --accent-movement: #2D5C8A;
+    --accent-movement-bg: #DCE8F2;
+    --success-bg: #E9F1E3;
+    --success-text: #3C6B2E;
+    --danger-bg: #FBEAE7;
+    --danger-text: #A33B2A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  header {
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: 16px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.2px; }
+  .eyebrow { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+
+  .global-toolbar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+  .toolbar-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .toolbar-label { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
+  .divider-v { width: 1px; height: 24px; background: var(--border-strong); margin: 0 4px; }
+  .field { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+  .field input { width: 64px; }
+  input[type="number"], input[type="text"] {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 14px;
+    background: var(--surface);
+    color: var(--text);
+  }
+  input:focus { outline: 2px solid #8a8a8a; outline-offset: 1px; }
+  button {
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  button:active { transform: scale(0.98); }
+  button.primary-sales { background: var(--accent-sales); color: #fff; border-color: var(--accent-sales); }
+  button.primary-sales:hover { background: #9C5119; }
+  button.primary-service { background: var(--accent-service); color: #fff; border-color: var(--accent-service); }
+  button.primary-service:hover { background: #185A4E; }
+  button.primary-movement { background: var(--accent-movement); color: #fff; border-color: var(--accent-movement); }
+  button.primary-movement:hover { background: #234A70; }
+  .icon-btn { padding: 6px 8px; border: none; background: transparent; }
+  .icon-btn:hover { background: #eee; }
+  .spacer { flex: 1; }
+
+  .brand-block { margin-bottom: 44px; }
+  .brand-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .brand-header h1.brand-title { font-size: 19px; font-weight: 600; margin: 0; }
+  .brand-pill {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+  .brand-pill.periphate { background: var(--accent-sales-bg); color: #7A4115; }
+  .brand-pill.movement { background: var(--accent-movement-bg); color: #1D3A57; }
+
+  section.dept { margin-bottom: 36px; }
+  .dept-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .dept-title { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot.sales { background: var(--accent-sales); }
+  .dot.service { background: var(--accent-service); }
+  .dot.movement { background: var(--accent-movement); }
+  h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  .dept-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+
+  .table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.sales-table { min-width: 1080px; }
+  table.service-table { min-width: 2100px; }
+  thead th {
+    text-align: right;
+    font-weight: 600;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 9px 7px;
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+  }
+  .sales-theme thead th { background: #F5F1E9; }
+  .service-theme thead th { background: #F0F3EF; }
+  .movement-theme thead th { background: #EEF2F6; }
+  tbody td {
+    padding: 5px 7px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tbody tr:hover { background: #FBF9F4; }
+  tbody td input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 12.5px;
+    padding: 4px 2px;
+  }
+  tbody td input:focus { outline: none; border-bottom: 1px solid #8a8a8a; }
+  .muted { color: var(--text-muted); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .bonus-cell { font-weight: 600; }
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  .banner.ok { background: var(--success-bg); color: var(--success-text); }
+  .banner.error { background: var(--danger-bg); color: var(--danger-text); }
+  .totals { display: flex; gap: 12px; margin-top: 16px; }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    flex: 1;
+  }
+  .stat .label { font-size: 12.5px; color: var(--text-muted); margin: 0 0 6px; }
+  .stat .value { font-size: 24px; font-weight: 600; margin: 0; letter-spacing: -0.3px; }
+  .hint { font-size: 12px; color: var(--text-muted); margin-top: 8px; margin-bottom: 4px; }
+  ::-webkit-scrollbar { height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  .col-divider { border-right: 2px solid var(--border-strong); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">מערכת בונוסים &middot; פריפיט ומובמנט</p>
+    <h1>חישוב בונוס נציגים</h1>
+  </header>
+
+  <div class="global-toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label">קבצי דוח פריפיט</span>
+      <button id="uploadHoursBtn">שעות עבודה</button>
+      <input type="file" id="hoursInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadSurveyBtn">ציון סקרים</button>
+      <input type="file" id="surveyInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadCallsBtn">פניות שנסגרו</button>
+      <input type="file" id="callsInput" accept=".xlsx,.xls,.csv" style="display:none" />
+    </div>
+    <div class="divider-v"></div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">קבצי דוח מובמנט</span>
+      <button id="uploadMvControlBtn">ציון בקרה</button>
+      <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadMvCallsBtn">שיחות טלפוניות</button>
+      <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadMvDigitalBtn">דיגיטל</button>
+      <input type="file" id="mvDigitalInput" accept=".xlsx,.xls,.csv" style="display:none" />
+    </div>
+    <div class="divider-v"></div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">הגדרות כלליות</span>
+      <div class="field">
+        <label for="workDays">ימי עבודה בחודש</label>
+        <input type="number" id="workDays" value="22" step="1" />
+      </div>
+      <div class="field">
+        <label for="hoursPerDay">שעות תקן ליום</label>
+        <input type="number" id="hoursPerDay" value="8.5" step="0.5" />
+      </div>
+      <div class="field">
+        <span class="muted">תקן מלא:</span>
+        <strong id="fullStandard">187</strong>
+      </div>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+
+  <div class="brand-block">
+    <div class="brand-header">
+      <h1 class="brand-title">פריפיט</h1>
+      <span class="brand-pill periphate">Periphate</span>
+    </div>
+
+    <section class="dept">
+      <div class="dept-header">
+        <div class="dept-title">
+          <span class="dot sales"></span>
+          <h2>מכירות</h2>
+        </div>
+      </div>
+      <div class="dept-toolbar">
+        <div class="field">
+          <label for="yaad">יעד פריון</label>
+          <input type="number" id="yaad" value="1.5" step="0.1" />
+        </div>
+        <div class="spacer"></div>
+        <button class="primary-sales" id="addSalesRowBtn">+ הוסף נציג</button>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="sales-table sales-theme" id="salesTable">
+            <thead>
+              <tr>
+                <th>מספר ת"ז</th>
+                <th>שם פרטי</th>
+                <th>שם משפחה</th>
+                <th>מכירות</th>
+                <th>שעות הכשרה</th>
+                <th>שעות עבודה</th>
+                <th>שעות בקיזוז הכשרה</th>
+                <th>פריון לשעה</th>
+                <th>% עמידה ביעד</th>
+                <th>עמלה למכירה</th>
+                <th>סה"כ בונוס</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="salesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="stat">
+          <p class="label">סה"כ מכירות</p>
+          <p class="value" id="salesTotalSales">0</p>
+        </div>
+        <div class="stat">
+          <p class="label">סה"כ בונוס לתשלום</p>
+          <p class="value" id="salesTotalBonus">0 ₪</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="dept" id="serviceSection">
+      <div class="dept-header">
+        <div class="dept-title">
+          <span class="dot service"></span>
+          <h2>שירות לקוחות</h2>
+        </div>
+      </div>
+      <div class="dept-toolbar">
+        <div class="spacer"></div>
+        <button class="primary-service" id="addServiceRowBtn">+ הוסף נציג</button>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="service-table service-theme" id="serviceTable">
+            <thead>
+              <tr>
+                <th>מספר ת"ז</th>
+                <th>שם משפחה</th>
+                <th>שם פרטי</th>
+                <th class="col-divider">ציון סקרים (נטען מקובץ)</th>
+                <th>ציון מדד סקרים</th>
+                <th class="col-divider">שעות עבודה</th>
+                <th>תקן מלא</th>
+                <th>פקטור נוכחות</th>
+                <th>תקן לאחר פקטור</th>
+                <th>% נוכחות</th>
+                <th>ציון מדד נוכחות</th>
+                <th class="col-divider">פניות שנסגרו (נטען מקובץ)</th>
+                <th>שיחות שנענו</th>
+                <th>שעות שהורדו למשימה</th>
+                <th>משימות נוספות</th>
+                <th>ממוצע פניות לשעה</th>
+                <th>ציון מדד פניות לשעה</th>
+                <th class="col-divider">ציון משוקלל</th>
+                <th>בונוס לשעת עבודה</th>
+                <th>סה"כ בונוס</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="serviceTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <p class="hint">קובץ שעות: עמודה C ת"ז, עמודה G מחלקה, עמודה S שעות. קובץ סקרים: עמודה A שם מלא, עמודה F ציון. קובץ פניות: עמודה A שם מלא, עמודה C פניות שנסגרו.</p>
+      <div class="totals">
+        <div class="stat">
+          <p class="label">מספר נציגים</p>
+          <p class="value" id="serviceTotalAgents">0</p>
+        </div>
+        <div class="stat">
+          <p class="label">סה"כ בונוס לתשלום</p>
+          <p class="value" id="serviceTotalBonus">0 ₪</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="brand-block">
+    <div class="brand-header">
+      <h1 class="brand-title">מובמנט</h1>
+      <span class="brand-pill movement">Movement</span>
+    </div>
+
+    <section class="dept" id="tnuatSection">
+      <div class="dept-header">
+        <div class="dept-title">
+          <span class="dot movement"></span>
+          <h2>תנועת</h2>
+        </div>
+      </div>
+      <div class="dept-toolbar">
+        <div class="spacer"></div>
+        <button class="primary-movement" id="addTnuatRowBtn">+ הוסף נציג</button>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="service-table movement-theme" id="tnuatTable"></table>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="stat">
+          <p class="label">מספר נציגים</p>
+          <p class="value" id="tnuatTotalAgents">0</p>
+        </div>
+        <div class="stat">
+          <p class="label">סה"כ בונוס לתשלום</p>
+          <p class="value" id="tnuatTotalBonus">0 ₪</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="dept" id="meuhedetSection">
+      <div class="dept-header">
+        <div class="dept-title">
+          <span class="dot movement"></span>
+          <h2>מאוחדת</h2>
+        </div>
+      </div>
+      <div class="dept-toolbar">
+        <div class="spacer"></div>
+        <button class="primary-movement" id="addMeuhedetRowBtn">+ הוסף נציג</button>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="service-table movement-theme" id="meuhedetTable"></table>
+        </div>
+      </div>
+      <p class="hint">קובץ ציון בקרה: עמודה A ת"ז, עמודה D % עמידה בבקרה (לדוגמה 0.8 = 80%, 1 = 100%). קובץ שיחות: עמודה B שם מלא, עמודה D נכנסות, עמודה F יוצאות. קובץ דיגיטל: עמודה A שם מלא, עמודה C כמות. אם לנציג יש רק שיחות או רק דיגיטל - המדד שאין בו נתון מקבל משקל 0 והשני מקבל 40%; אם יש לו שניהם, כל אחד מקבל 20%.</p>
+      <div class="totals">
+        <div class="stat">
+          <p class="label">מספר נציגים</p>
+          <p class="value" id="meuhedetTotalAgents">0</p>
+        </div>
+        <div class="stat">
+          <p class="label">סה"כ בונוס לתשלום</p>
+          <p class="value" id="meuhedetTotalBonus">0 ₪</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function fmt(n, digits) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return Number(n).toLocaleString('he-IL', { maximumFractionDigits: digits === undefined ? 2 : digits });
+}
+function normalizeName(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ');
+}
+function normalizeDept(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ').replace(/[\u2010-\u2015\u2212]/g, '-');
+}
+function showBanner(type, text) {
+  document.getElementById('banner').innerHTML = `<div class="banner ${type}">${text}</div>`;
+}
+function lockedCell(val, cellName, digits) {
+  const display = (val === '' || val === null || val === undefined) ? '—' : fmt(val, digits);
+  return `<td class="num muted" data-cell="${cellName}">${display}</td>`;
+}
+
+/* ================= SALES (Periphate) ================= */
+const TIERS = [
+  { min: 0,    max: 0.4,      rate: 0 },
+  { min: 0.4,  max: 0.6,      rate: 4 },
+  { min: 0.6,  max: 0.8,      rate: 5 },
+  { min: 0.8,  max: 1.0,      rate: 6 },
+  { min: 1.0,  max: 1.08,     rate: 7 },
+  { min: 1.08, max: 1.2,      rate: 8 },
+  { min: 1.2,  max: Infinity, rate: 9 },
+];
+function getRate(pct) {
+  if (!isFinite(pct)) return 0;
+  for (const t of TIERS) if (pct >= t.min && pct < t.max) return t.rate;
+  return TIERS[TIERS.length - 1].rate;
+}
+
+let salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+let yaad = 1.5;
+
+function addSalesRow() {
+  salesRows.push({ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null });
+  renderSales();
+}
+function removeSalesRow(id) {
+  if (salesRows.length <= 1) return;
+  salesRows = salesRows.filter(r => r.id !== id);
+  renderSales();
+}
+function updateSalesRow(id, field, value) {
+  const row = salesRows.find(r => r.id === id);
+  if (row) row[field] = value;
+  renderSalesCalcOnly();
+}
+function computeSalesRow(r) {
+  const sales = Number(r.sales) || 0;
+  const training = Number(r.trainingHours) || 0;
+  const workHours = Number(r.workHours) || 0;
+  const netHours = workHours - training;
+  const productivity = netHours > 0 ? sales / netHours : 0;
+  const pctTarget = yaad > 0 ? productivity / yaad : 0;
+  const rate = getRate(pctTarget);
+  const totalBonus = rate * sales;
+  return { netHours, productivity, pctTarget, rate, totalBonus };
+}
+function salesRowHTML(r) {
+  return `
+    <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
+    <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
+    <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
+    <td><input type="number" value="${r.sales}" data-id="${r.id}" data-field="sales" /></td>
+    <td><input type="number" value="${r.trainingHours}" data-id="${r.id}" data-field="trainingHours" /></td>
+    <td class="num muted" data-cell="workHours">${r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2)}</td>
+    <td class="num muted" data-cell="netHours"></td>
+    <td class="num muted" data-cell="productivity"></td>
+    <td class="num muted" data-cell="pctTarget"></td>
+    <td class="num muted" data-cell="rate"></td>
+    <td class="num bonus-cell" data-cell="totalBonus"></td>
+    <td><button class="icon-btn" aria-label="הסר נציג" data-remove="1" data-id="${r.id}">✕</button></td>
+  `;
+}
+function renderSales() {
+  const tbody = document.getElementById('salesTbody');
+  tbody.innerHTML = '';
+  salesRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = r.id;
+    tr.innerHTML = salesRowHTML(r);
+    tbody.appendChild(tr);
+  });
+  bindRowEvents(tbody, (id, f, v) => updateSalesRow(id, f, v), (id) => removeSalesRow(id));
+  renderSalesCalcOnly();
+}
+function renderSalesCalcOnly() {
+  let totalSales = 0, totalBonus = 0;
+  salesRows.forEach(r => {
+    const c = computeSalesRow(r);
+    totalSales += Number(r.sales) || 0;
+    totalBonus += c.totalBonus;
+    const tr = document.querySelector(`#salesTbody tr[data-row-id="${r.id}"]`);
+    if (!tr) return;
+    tr.querySelector('[data-cell="workHours"]').textContent = r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2);
+    tr.querySelector('[data-cell="netHours"]').textContent = fmt(c.netHours, 2);
+    tr.querySelector('[data-cell="productivity"]').textContent = fmt(c.productivity, 3);
+    tr.querySelector('[data-cell="pctTarget"]').textContent = fmt(c.pctTarget * 100, 1) + '%';
+    tr.querySelector('[data-cell="rate"]').textContent = fmt(c.rate, 0) + ' ₪';
+    tr.querySelector('[data-cell="totalBonus"]').textContent = fmt(c.totalBonus, 0) + ' ₪';
+  });
+  document.getElementById('salesTotalSales').textContent = fmt(totalSales, 0);
+  document.getElementById('salesTotalBonus').textContent = fmt(totalBonus, 0) + ' ₪';
+}
+
+/* ================= SHARED GLOBAL SETTINGS ================= */
+let workDays = 22;
+let hoursPerDay = 8.5;
+function fullStandard() { return workDays * hoursPerDay; }
+
+/* ================= GENERIC SCORE TIER FUNCTIONS ================= */
+function surveyScore(d) {
+  if (d < 4) return 0;
+  if (d < 4.25) return 0.6;
+  if (d < 4.5) return 0.8;
+  return 1;
+}
+function attendanceScore(j) {
+  if (j < 0.8) return 0;
+  if (j < 0.86) return 0.6;
+  if (j < 0.93) return 0.8;
+  if (j < 1.0) return 0.9;
+  if (j < 1.06) return 1.0;
+  return 1.1;
+}
+function callsScorePeriphate(o) {
+  if (o < 5) return 0;
+  if (o < 6) return 0.5;
+  if (o < 7) return 0.7;
+  if (o < 8) return 0.8;
+  if (o < 9) return 1.0;
+  return 1.1;
+}
+// Movement control score: 0-5 scale, converted to 0-1 by dividing by 5
+function controlScore5(h) {
+  if (h < 0.7) return 0;
+  if (h < 0.75) return 1;
+  if (h < 0.8) return 2;
+  if (h < 0.9) return 3;
+  if (h < 0.95) return 4;
+  return 5;
+}
+// Movement calls/digital tier score (% of target -> 0-5)
+function pctTierScore5(pct) {
+  if (pct < 0.8) return 0;
+  if (pct < 0.86) return 1;
+  if (pct < 0.93) return 2;
+  if (pct < 0.97) return 3;
+  if (pct < 1.0) return 4;
+  return 5;
+}
+
+/* ================= PERIPHATE SERVICE ================= */
+let serviceRows = [{
+  id: uid(), empId: '', lastName: '', firstName: '',
+  surveyScore: '', workHours: null, attendanceFactor: 0,
+  closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+}];
+
+function addServiceRow() {
+  serviceRows.push({
+    id: uid(), empId: '', lastName: '', firstName: '',
+    surveyScore: '', workHours: null, attendanceFactor: 0,
+    closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+  });
+  renderService();
+}
+function removeServiceRow(id) {
+  if (serviceRows.length <= 1) return;
+  serviceRows = serviceRows.filter(r => r.id !== id);
+  renderService();
+}
+function updateServiceRow(id, field, value) {
+  const row = serviceRows.find(r => r.id === id);
+  if (row) row[field] = value;
+  renderServiceCalcOnly();
+}
+function computeServiceRow(r) {
+  const survey = Number(r.surveyScore) || 0;
+  const sSurvey = surveyScore(survey);
+
+  const fullStd = fullStandard();
+  const attendanceFactor = Number(r.attendanceFactor) || 0;
+  const stdAfterFactor = fullStd - attendanceFactor;
+  const workHours = Number(r.workHours) || 0;
+  const attendancePct = stdAfterFactor > 0 ? workHours / stdAfterFactor : 0;
+  const sAttendance = attendanceScore(attendancePct);
+
+  const closedCalls = Number(r.closedCalls) || 0;
+  const answeredCalls = Number(r.answeredCalls) || 0;
+  const specialTaskHours = Number(r.specialTaskHours) || 0;
+  const extraTasks = Number(r.extraTasks) || 0;
+  const netCallHours = workHours - specialTaskHours;
+  const avgCallsPerHour = netCallHours > 0 ? (closedCalls + answeredCalls + extraTasks) / netCallHours : 0;
+  const sCalls = callsScorePeriphate(avgCallsPerHour);
+
+  const weighted = 0.35 * sSurvey + 0.3 * sAttendance + 0.35 * sCalls;
+  const bonusPerHour = 5 * weighted;
+  const totalBonus = bonusPerHour * workHours;
+
+  return { sSurvey, fullStd, stdAfterFactor, attendancePct, sAttendance, avgCallsPerHour, sCalls, weighted, bonusPerHour, totalBonus };
+}
+function serviceRowHTML(r) {
+  return `
+    <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
+    <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
+    <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
+    <td class="col-divider num muted" data-cell="surveyScore">${r.surveyScore === '' || r.surveyScore == null ? '—' : fmt(r.surveyScore, 2)}</td>
+    <td class="num muted" data-cell="sSurvey"></td>
+    <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
+    <td class="num muted" data-cell="fullStd"></td>
+    <td><input type="number" value="${r.attendanceFactor}" data-id="${r.id}" data-field="attendanceFactor" step="1" /></td>
+    <td class="num muted" data-cell="stdAfterFactor"></td>
+    <td class="num muted" data-cell="attendancePct"></td>
+    <td class="num muted" data-cell="sAttendance"></td>
+    <td class="col-divider num muted" data-cell="closedCalls">${r.closedCalls === '' || r.closedCalls == null ? '—' : fmt(r.closedCalls, 2)}</td>
+    <td><input type="number" value="${r.answeredCalls}" data-id="${r.id}" data-field="answeredCalls" /></td>
+    <td><input type="number" value="${r.specialTaskHours}" data-id="${r.id}" data-field="specialTaskHours" /></td>
+    <td><input type="number" value="${r.extraTasks}" data-id="${r.id}" data-field="extraTasks" /></td>
+    <td class="num muted" data-cell="avgCallsPerHour"></td>
+    <td class="num muted" data-cell="sCalls"></td>
+    <td class="num muted col-divider" data-cell="weighted"></td>
+    <td class="num muted" data-cell="bonusPerHour"></td>
+    <td class="num bonus-cell" data-cell="totalBonus"></td>
+    <td><button class="icon-btn" aria-label="הסר נציג" data-remove="1" data-id="${r.id}">✕</button></td>
+  `;
+}
+function renderService() {
+  document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+  const tbody = document.getElementById('serviceTbody');
+  tbody.innerHTML = '';
+  serviceRows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = r.id;
+    tr.innerHTML = serviceRowHTML(r);
+    tbody.appendChild(tr);
+  });
+  bindRowEvents(tbody, (id, f, v) => updateServiceRow(id, f, v), (id) => removeServiceRow(id));
+  renderServiceCalcOnly();
+}
+function renderServiceCalcOnly() {
+  document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+  let totalBonus = 0;
+  serviceRows.forEach(r => {
+    const c = computeServiceRow(r);
+    totalBonus += c.totalBonus;
+    const tr = document.querySelector(`#serviceTbody tr[data-row-id="${r.id}"]`);
+    if (!tr) return;
+    tr.querySelector('[data-cell="surveyScore"]').textContent = (r.surveyScore === '' || r.surveyScore == null) ? '—' : fmt(r.surveyScore, 2);
+    tr.querySelector('[data-cell="sSurvey"]').textContent = fmt(c.sSurvey * 100, 0) + '%';
+    tr.querySelector('[data-cell="workHours"]').textContent = r.workHours == null ? '—' : fmt(r.workHours, 2);
+    tr.querySelector('[data-cell="fullStd"]').textContent = fmt(c.fullStd, 1);
+    tr.querySelector('[data-cell="stdAfterFactor"]').textContent = fmt(c.stdAfterFactor, 1);
+    tr.querySelector('[data-cell="attendancePct"]').textContent = fmt(c.attendancePct * 100, 1) + '%';
+    tr.querySelector('[data-cell="sAttendance"]').textContent = fmt(c.sAttendance * 100, 0) + '%';
+    tr.querySelector('[data-cell="closedCalls"]').textContent = (r.closedCalls === '' || r.closedCalls == null) ? '—' : fmt(r.closedCalls, 2);
+    tr.querySelector('[data-cell="avgCallsPerHour"]').textContent = fmt(c.avgCallsPerHour, 2);
+    tr.querySelector('[data-cell="sCalls"]').textContent = fmt(c.sCalls * 100, 0) + '%';
+    tr.querySelector('[data-cell="weighted"]').textContent = fmt(c.weighted * 100, 1) + '%';
+    tr.querySelector('[data-cell="bonusPerHour"]').textContent = fmt(c.bonusPerHour, 2) + ' ₪';
+    tr.querySelector('[data-cell="totalBonus"]').textContent = fmt(c.totalBonus, 0) + ' ₪';
+  });
+  document.getElementById('serviceTotalAgents').textContent = serviceRows.length;
+  document.getElementById('serviceTotalBonus').textContent = fmt(totalBonus, 0) + ' ₪';
+}
+
+/* ================= MOVEMENT (תנועת + מאוחדת) — generic engine ================= */
+function makeMovementRow() {
+  return {
+    id: uid(), empId: '', lastName: '', firstName: '',
+    controlScoreRaw: '', // raw % (e.g. 0.8 = 80%), locked from file
+    workHours: null, attendanceFactor: 0,
+    callsCount: '', // locked from file (incoming+outgoing sum)
+    digitalCount: '' // locked from file
+  };
+}
+function computeMovementRow(r) {
+  const fullStd = fullStandard();
+  const attendanceFactor = Number(r.attendanceFactor) || 0;
+  const stdAfterFactor = fullStd - attendanceFactor;
+  const workHours = Number(r.workHours) || 0;
+  const attendancePct = stdAfterFactor > 0 ? workHours / stdAfterFactor : 0;
+  const sAttendance = attendanceScore(attendancePct);
+
+  const controlRaw = Number(r.controlScoreRaw) || 0;
+  const sControl5 = controlScore5(controlRaw);
+  const sControl = sControl5 / 5;
+
+  const hasCalls = r.callsCount !== '' && r.callsCount !== null && r.callsCount !== undefined && Number(r.callsCount) > 0;
+  const callsCount = Number(r.callsCount) || 0;
+  const callsPerHour = workHours > 0 ? callsCount / workHours : 0;
+  const callsPctOfTarget = callsPerHour / 8;
+  const sCalls5 = pctTierScore5(callsPctOfTarget);
+  const sCalls = sCalls5 / 5;
+
+  const hasDigital = r.digitalCount !== '' && r.digitalCount !== null && r.digitalCount !== undefined && Number(r.digitalCount) > 0;
+  const digitalCount = Number(r.digitalCount) || 0;
+  const digitalPerHour = workHours > 0 ? digitalCount / workHours : 0;
+  const digitalPctOfTarget = digitalPerHour / 15;
+  const sDigital5 = pctTierScore5(digitalPctOfTarget);
+  const sDigital = sDigital5 / 5;
+
+  let weighted;
+  if (hasCalls && hasDigital) {
+    weighted = 0.15 * sAttendance + 0.45 * sControl + 0.2 * sCalls + 0.2 * sDigital;
+  } else if (hasDigital) {
+    weighted = 0.15 * sAttendance + 0.45 * sControl + 0.4 * sDigital;
+  } else {
+    weighted = 0.15 * sAttendance + 0.45 * sControl + 0.4 * sCalls;
+  }
+  const bonusPerHour = 5 * weighted;
+  const totalBonus = bonusPerHour * workHours;
+
+  return { fullStd, stdAfterFactor, attendancePct, sAttendance, sControl5, sControl, hasCalls, callsPerHour, sCalls, hasDigital, digitalPerHour, sDigital, weighted, bonusPerHour, totalBonus };
+}
+function movementRowHTML(r) {
+  return `
+    <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
+    <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
+    <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
+    <td class="col-divider num muted" data-cell="controlScoreRaw">${r.controlScoreRaw === '' || r.controlScoreRaw == null ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%'}</td>
+    <td class="num muted" data-cell="sControl"></td>
+    <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
+    <td class="num muted" data-cell="fullStd"></td>
+    <td><input type="number" value="${r.attendanceFactor}" data-id="${r.id}" data-field="attendanceFactor" step="1" /></td>
+    <td class="num muted" data-cell="stdAfterFactor"></td>
+    <td class="num muted" data-cell="attendancePct"></td>
+    <td class="num muted" data-cell="sAttendance"></td>
+    <td class="col-divider num muted" data-cell="callsCount">${r.callsCount === '' || r.callsCount == null ? '—' : fmt(r.callsCount, 2)}</td>
+    <td class="num muted" data-cell="callsPerHour"></td>
+    <td class="num muted" data-cell="sCalls"></td>
+    <td class="col-divider num muted" data-cell="digitalCount">${r.digitalCount === '' || r.digitalCount == null ? '—' : fmt(r.digitalCount, 2)}</td>
+    <td class="num muted" data-cell="digitalPerHour"></td>
+    <td class="num muted" data-cell="sDigital"></td>
+    <td class="num muted col-divider" data-cell="weighted"></td>
+    <td class="num muted" data-cell="bonusPerHour"></td>
+    <td class="num bonus-cell" data-cell="totalBonus"></td>
+    <td><button class="icon-btn" aria-label="הסר נציג" data-remove="1" data-id="${r.id}">✕</button></td>
+  `;
+}
+const movementHeaderHTML = `
+  <thead>
+    <tr>
+      <th>מספר ת"ז</th>
+      <th>שם משפחה</th>
+      <th>שם פרטי</th>
+      <th class="col-divider">% עמידה בקרה (נטען מקובץ)</th>
+      <th>ציון מדד בקרות</th>
+      <th class="col-divider">שעות עבודה</th>
+      <th>תקן מלא</th>
+      <th>פקטור נוכחות</th>
+      <th>תקן לאחר פקטור</th>
+      <th>% נוכחות</th>
+      <th>ציון מדד נוכחות</th>
+      <th class="col-divider">כמות שיחות (נטען מקובץ)</th>
+      <th>שיחות לשעה</th>
+      <th>ציון מדד שיחות</th>
+      <th class="col-divider">כמות דיגיטל חודשית (נטען מקובץ)</th>
+      <th>דיגיטל לשעה</th>
+      <th>ציון מדד דיגיטל</th>
+      <th class="col-divider">ציון משוקלל</th>
+      <th>בונוס לשעת עבודה</th>
+      <th>סה"כ בונוס</th>
+      <th></th>
+    </tr>
+  </thead>
+`;
+
+function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId) {
+  let rows = [makeMovementRow()];
+
+  function add() { rows.push(makeMovementRow()); render(); }
+  function remove(id) {
+    if (rows.length <= 1) return;
+    rows = rows.filter(r => r.id !== id);
+    render();
+  }
+  function update(id, field, value) {
+    const row = rows.find(r => r.id === id);
+    if (row) row[field] = value;
+    renderCalcOnly();
+  }
+  function render() {
+    const table = document.getElementById(tableId);
+    table.innerHTML = movementHeaderHTML + '<tbody id="' + tableId + 'Tbody"></tbody>';
+    const tbody = document.getElementById(tableId + 'Tbody');
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.dataset.rowId = r.id;
+      tr.innerHTML = movementRowHTML(r);
+      tbody.appendChild(tr);
+    });
+    bindRowEvents(tbody, update, remove);
+    renderCalcOnly();
+  }
+  function renderCalcOnly() {
+    let totalBonus = 0;
+    rows.forEach(r => {
+      const c = computeMovementRow(r);
+      totalBonus += c.totalBonus;
+      const tr = document.querySelector(`#${tableId}Tbody tr[data-row-id="${r.id}"]`);
+      if (!tr) return;
+      tr.querySelector('[data-cell="controlScoreRaw"]').textContent = (r.controlScoreRaw === '' || r.controlScoreRaw == null) ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%';
+      tr.querySelector('[data-cell="sControl"]').textContent = fmt(c.sControl * 100, 0) + '%';
+      tr.querySelector('[data-cell="workHours"]').textContent = r.workHours == null ? '—' : fmt(r.workHours, 2);
+      tr.querySelector('[data-cell="fullStd"]').textContent = fmt(c.fullStd, 1);
+      tr.querySelector('[data-cell="stdAfterFactor"]').textContent = fmt(c.stdAfterFactor, 1);
+      tr.querySelector('[data-cell="attendancePct"]').textContent = fmt(c.attendancePct * 100, 1) + '%';
+      tr.querySelector('[data-cell="sAttendance"]').textContent = fmt(c.sAttendance * 100, 0) + '%';
+      tr.querySelector('[data-cell="callsCount"]').textContent = (r.callsCount === '' || r.callsCount == null) ? '—' : fmt(r.callsCount, 2);
+      tr.querySelector('[data-cell="callsPerHour"]').textContent = c.hasCalls ? fmt(c.callsPerHour, 2) : '—';
+      tr.querySelector('[data-cell="sCalls"]').textContent = c.hasCalls ? (fmt(c.sCalls * 100, 0) + '%') : '—';
+      tr.querySelector('[data-cell="digitalCount"]').textContent = (r.digitalCount === '' || r.digitalCount == null) ? '—' : fmt(r.digitalCount, 2);
+      tr.querySelector('[data-cell="digitalPerHour"]').textContent = c.hasDigital ? fmt(c.digitalPerHour, 2) : '—';
+      tr.querySelector('[data-cell="sDigital"]').textContent = c.hasDigital ? (fmt(c.sDigital * 100, 0) + '%') : '—';
+      tr.querySelector('[data-cell="weighted"]').textContent = fmt(c.weighted * 100, 1) + '%';
+      tr.querySelector('[data-cell="bonusPerHour"]').textContent = fmt(c.bonusPerHour, 2) + ' ₪';
+      tr.querySelector('[data-cell="totalBonus"]').textContent = fmt(c.totalBonus, 0) + ' ₪';
+    });
+    document.getElementById(totalAgentsId).textContent = rows.length;
+    document.getElementById(totalBonusId).textContent = fmt(totalBonus, 0) + ' ₪';
+  }
+
+  document.getElementById(addBtnId).addEventListener('click', add);
+  render();
+
+  return {
+    getRows: () => rows,
+    setWorkHoursById: (empId, hours) => {
+      const row = rows.find(r => String(r.empId).trim() === empId);
+      if (row) { row.workHours = hours; return true; }
+      return false;
+    },
+    setByFullName: (fullName, field, value) => {
+      let any = false;
+      rows.forEach(r => {
+        const full = normalizeName(`${r.firstName} ${r.lastName}`);
+        if (full && full === fullName) { r[field] = value; any = true; }
+      });
+      return any;
+    },
+    setByEmpId: (empId, field, value) => {
+      let any = false;
+      rows.forEach(r => {
+        if (String(r.empId).trim() === empId) { r[field] = value; any = true; }
+      });
+      return any;
+    },
+    refresh: renderCalcOnly
+  };
+}
+
+const tnuat = makeMovementInstance('tnuatTable', 'tnuatTotalAgents', 'tnuatTotalBonus', 'addTnuatRowBtn');
+const meuhedet = makeMovementInstance('meuhedetTable', 'meuhedetTotalAgents', 'meuhedetTotalBonus', 'addMeuhedetRowBtn');
+
+/* ================= SHARED EVENT BINDING ================= */
+function bindRowEvents(tbody, updateFn, removeFn) {
+  tbody.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const { id, field } = e.target.dataset;
+      updateFn(id, field, e.target.value);
+    });
+  });
+  tbody.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', (e) => removeFn(e.target.dataset.id));
+  });
+}
+
+document.getElementById('addSalesRowBtn').addEventListener('click', addSalesRow);
+document.getElementById('addServiceRowBtn').addEventListener('click', addServiceRow);
+document.getElementById('yaad').addEventListener('input', (e) => { yaad = Number(e.target.value) || 0; renderSalesCalcOnly(); });
+document.getElementById('workDays').addEventListener('input', (e) => {
+  workDays = Number(e.target.value) || 0;
+  renderServiceCalcOnly(); tnuat.refresh(); meuhedet.refresh();
+  document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+});
+document.getElementById('hoursPerDay').addEventListener('input', (e) => {
+  hoursPerDay = Number(e.target.value) || 0;
+  renderServiceCalcOnly(); tnuat.refresh(); meuhedet.refresh();
+  document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+});
+
+/* ================= FILE UPLOADS: PERIPHATE ================= */
+const COL_TZ = 2;     // C
+const COL_DEPT = 6;   // G
+const COL_HOURS = 18; // S
+const DEPT_SALES = normalizeDept('פריפיט - מכירות');
+const DEPT_SERVICE = normalizeDept('פריפיט - שירות');
+const DEPT_TNUAT = normalizeDept('מובמנט - מובמנט');
+const DEPT_MEUHEDET = normalizeDept('מובמנט - מאוחדת');
+
+function bindFileButton(btnId, inputId, onLoad) {
+  document.getElementById(btnId).addEventListener('click', () => document.getElementById(inputId).click());
+  document.getElementById(inputId).addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      await onLoad(data);
+    } catch (err) {
+      showBanner('error', 'שגיאה בקריאת הקובץ. ודא שזהו קובץ אקסל תקין.');
+    }
+    e.target.value = '';
+  });
+}
+
+bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
+  const sumsSales = {}, sumsService = {}, sumsTnuat = {}, sumsMeuhedet = {};
+  let salesRowsFound = 0, serviceRowsFound = 0, tnuatRowsFound = 0, meuhedetRowsFound = 0;
+  const seenDepts = new Set();
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const idVal = r[COL_TZ];
+    const deptVal = r[COL_DEPT];
+    const hoursVal = Number(r[COL_HOURS]);
+    if (idVal === null || idVal === undefined || idVal === '' || isNaN(hoursVal)) continue;
+    if (typeof deptVal !== 'string') continue;
+    const dept = normalizeDept(deptVal);
+    const key = String(idVal).trim();
+    seenDepts.add(dept);
+    if (dept === DEPT_SALES) { sumsSales[key] = (sumsSales[key] || 0) + hoursVal; salesRowsFound++; }
+    else if (dept === DEPT_SERVICE) { sumsService[key] = (sumsService[key] || 0) + hoursVal; serviceRowsFound++; }
+    else if (dept === DEPT_TNUAT) { sumsTnuat[key] = (sumsTnuat[key] || 0) + hoursVal; tnuatRowsFound++; }
+    else if (dept === DEPT_MEUHEDET) { sumsMeuhedet[key] = (sumsMeuhedet[key] || 0) + hoursVal; meuhedetRowsFound++; }
+  }
+  let matchedSales = 0, matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
+  salesRows.forEach(r => {
+    const key = String(r.empId).trim();
+    if (key && sumsSales.hasOwnProperty(key)) { r.workHours = sumsSales[key]; matchedSales++; }
+  });
+  serviceRows.forEach(r => {
+    const key = String(r.empId).trim();
+    if (key && sumsService.hasOwnProperty(key)) { r.workHours = sumsService[key]; matchedService++; }
+  });
+  Object.keys(sumsTnuat).forEach(key => { if (tnuat.setWorkHoursById(key, sumsTnuat[key])) matchedTnuat++; });
+  Object.keys(sumsMeuhedet).forEach(key => { if (meuhedet.setWorkHoursById(key, sumsMeuhedet[key])) matchedMeuhedet++; });
+
+  if (salesRowsFound === 0 && serviceRowsFound === 0 && tnuatRowsFound === 0 && meuhedetRowsFound === 0) {
+    const recognized = [DEPT_SALES, DEPT_SERVICE, DEPT_TNUAT, DEPT_MEUHEDET];
+    const unrecognized = [...seenDepts].filter(d => !recognized.includes(d)).slice(0, 5);
+    const sample = unrecognized.length ? ` שמות מחלקה שנמצאו בקובץ: ${unrecognized.map(d => '"' + d + '"').join(', ')}.` : '';
+    showBanner('error', `לא נמצאו שורות עם שם מחלקה מתאים בעמודה G.${sample}`);
+  } else {
+    showBanner('ok', `הקובץ נטען. פריפיט מכירות: נמצאו ${salesRowsFound} שורות, הותאמו ${matchedSales} נציגים. פריפיט שירות: נמצאו ${serviceRowsFound}, הותאמו ${matchedService}. תנועת: נמצאו ${tnuatRowsFound}, הותאמו ${matchedTnuat}. מאוחדת: נמצאו ${meuhedetRowsFound}, הותאמו ${matchedMeuhedet}.`);
+  }
+  renderSalesCalcOnly();
+  renderServiceCalcOnly();
+  tnuat.refresh();
+  meuhedet.refresh();
+});
+
+bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
+  const sums = {}, counts = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const nameVal = r[0];
+    const scoreVal = Number(r[5]);
+    if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(scoreVal)) continue;
+    const key = normalizeName(nameVal);
+    sums[key] = (sums[key] || 0) + scoreVal;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  let matched = 0;
+  serviceRows.forEach(r => {
+    const full = normalizeName(`${r.firstName} ${r.lastName}`);
+    if (full && sums.hasOwnProperty(full)) { r.surveyScore = sums[full] / counts[full]; matched++; }
+  });
+  showBanner('ok', `ציון סקרים נטען (ממוצע) ל-${matched} נציגים, לפי התאמת שם מלא.`);
+  renderServiceCalcOnly();
+});
+
+bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
+  const sums = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const nameVal = r[0];
+    const val = Number(r[2]);
+    if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(val)) continue;
+    const key = normalizeName(nameVal);
+    sums[key] = (sums[key] || 0) + val;
+  }
+  let matched = 0;
+  serviceRows.forEach(r => {
+    const full = normalizeName(`${r.firstName} ${r.lastName}`);
+    if (full && sums.hasOwnProperty(full)) { r.closedCalls = sums[full]; matched++; }
+  });
+  showBanner('ok', `פניות שנסגרו נטענו (מסוכמות) ל-${matched} נציגים, לפי התאמת שם מלא.`);
+  renderServiceCalcOnly();
+});
+
+/* ================= FILE UPLOADS: MOVEMENT ================= */
+bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
+  const sums = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const idVal = r[0]; // column A
+    const val = Number(r[3]); // column D
+    if (idVal === null || idVal === undefined || idVal === '' || isNaN(val)) continue;
+    const key = String(idVal).trim();
+    sums[key] = val;
+  }
+  let matchedT = 0, matchedM = 0;
+  Object.keys(sums).forEach(key => {
+    if (tnuat.setByEmpId(key, 'controlScoreRaw', sums[key])) matchedT++;
+    if (meuhedet.setByEmpId(key, 'controlScoreRaw', sums[key])) matchedM++;
+  });
+  showBanner('ok', `ציון בקרה נטען. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  tnuat.refresh(); meuhedet.refresh();
+});
+
+bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
+  const sums = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const nameVal = r[1]; // column B
+    const inc = Number(r[3]); // column D
+    const out = Number(r[5]); // column F
+    if (nameVal === null || nameVal === undefined || nameVal === '') continue;
+    const total = (isNaN(inc) ? 0 : inc) + (isNaN(out) ? 0 : out);
+    if (total === 0 && isNaN(inc) && isNaN(out)) continue;
+    const key = normalizeName(nameVal);
+    sums[key] = (sums[key] || 0) + total;
+  }
+  let matchedT = 0, matchedM = 0;
+  Object.keys(sums).forEach(key => {
+    if (tnuat.setByFullName(key, 'callsCount', sums[key])) matchedT++;
+    if (meuhedet.setByFullName(key, 'callsCount', sums[key])) matchedM++;
+  });
+  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  tnuat.refresh(); meuhedet.refresh();
+});
+
+bindFileButton('uploadMvDigitalBtn', 'mvDigitalInput', (data) => {
+  const sums = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const nameVal = r[0]; // column A
+    const val = Number(r[2]); // column C
+    if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(val)) continue;
+    const key = normalizeName(nameVal);
+    sums[key] = (sums[key] || 0) + val;
+  }
+  let matchedT = 0, matchedM = 0;
+  Object.keys(sums).forEach(key => {
+    if (tnuat.setByFullName(key, 'digitalCount', sums[key])) matchedT++;
+    if (meuhedet.setByFullName(key, 'digitalCount', sums[key])) matchedM++;
+  });
+  showBanner('ok', `כמות דיגיטל נטענה. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  tnuat.refresh(); meuhedet.refresh();
+});
+
+renderSales();
+renderService();
+</script>
+</body>
+</html>
