@@ -6,6 +6,7 @@
 <title>מערכת בונוסים - פריפיט ומובמנט</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #FAF8F4;
@@ -204,6 +205,47 @@
     color: var(--text);
   }
   .col-divider { border-right: 2px solid var(--border-strong); }
+
+  .top-nav {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .nav-tab {
+    border: none;
+    background: none;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    cursor: pointer;
+  }
+  .nav-tab:hover { background: #F0EDE6; }
+  .nav-tab.active { color: var(--text); border-bottom-color: var(--accent-movement); }
+
+  #agentsSummaryTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #agentsSummaryTable thead th {
+    text-align: right; font-weight: 600; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.02em; padding: 9px 10px;
+    border-bottom: 1px solid var(--border-strong); background: #F5F3EE;
+  }
+  #agentsSummaryTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #agentsSummaryTable tbody tr:hover { background: #FBF9F4; cursor: pointer; }
+  #agentsSummaryTable tbody tr.selected { background: var(--accent-movement-bg); }
+  .agent-select-btn {
+    font-size: 12px; padding: 5px 12px;
+  }
+  #wdHistoryTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #wdHistoryTable thead th {
+    text-align: right; font-weight: 600; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.02em; padding: 9px 10px;
+    border-bottom: 1px solid var(--border-strong); background: #F5F3EE;
+  }
+  #wdHistoryTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #wdHistoryTable tbody tr.current-month { background: var(--accent-movement-bg); }
 </style>
 </head>
 <body>
@@ -212,6 +254,14 @@
     <p class="eyebrow">מערכת בונוסים &middot; פריפיט ומובמנט</p>
     <h1>חישוב בונוס נציגים</h1>
   </header>
+
+  <div class="top-nav">
+    <button class="nav-tab active" id="navCalculator" type="button">מחשבון</button>
+    <button class="nav-tab" id="navAgents" type="button">בונוס נציגים</button>
+    <button class="nav-tab" id="navWorkDays" type="button">הגדרת ימי עבודה</button>
+  </div>
+
+  <div id="calculatorView">
 
   <div class="global-toolbar">
     <div class="toolbar-group">
@@ -453,6 +503,108 @@
       </div>
     </section>
   </div>
+
+  </div><!-- /calculatorView -->
+
+  <div id="agentsView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">מחלקה</span>
+        <select id="agentFilterDept">
+          <option value="">הכל</option>
+          <option value="sales">פריפיט - מכירות</option>
+          <option value="service">פריפיט - שירות</option>
+          <option value="tnuat">מובמנט - תנועת</option>
+          <option value="meuhedet">מובמנט - מאוחדת</option>
+        </select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">חודש</span>
+        <select id="agentFilterMonth"></select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group" style="flex:1;">
+        <span class="toolbar-label">שם נציג</span>
+        <input type="text" id="agentSearchInput" placeholder="הקלד שם לחיפוש…" style="flex:1; min-width:160px;" />
+      </div>
+    </div>
+
+    <div class="table-card" style="margin-bottom:20px;">
+      <div class="table-scroll">
+        <table id="agentsSummaryTable">
+          <thead>
+            <tr>
+              <th>שם נציג</th>
+              <th>מחלקה</th>
+              <th>סה"כ בונוס</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="agentsSummaryTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="agentDetailEmpty" class="table-card" style="padding:40px; text-align:center; color:var(--text-muted); font-size:13.5px;">
+      בחר נציג מהרשימה למעלה כדי לראות את מגמת הבונוס שלו על פני זמן.
+    </div>
+
+    <div id="agentDetailView" style="display:none;">
+      <div class="dept-header" style="margin-bottom:14px;">
+        <div class="dept-title">
+          <span class="dot" id="agentDetailDot"></span>
+          <h2 id="agentDetailName">—</h2>
+        </div>
+        <span class="muted" id="agentDetailMeta" style="font-size:12.5px;"></span>
+      </div>
+
+      <div class="table-card" style="padding:18px; margin-bottom:20px;">
+        <p class="label" style="font-size:12.5px; color:var(--text-muted); margin:0 0 10px;">מגמת בונוס לאורך זמן</p>
+        <canvas id="agentBonusChart" height="90"></canvas>
+      </div>
+
+      <div class="table-card" style="padding:18px;">
+        <p class="label" style="font-size:12.5px; color:var(--text-muted); margin:0 0 10px;">פירוט מדדים לפי פעילות</p>
+        <canvas id="agentBreakdownChart" height="110"></canvas>
+      </div>
+    </div>
+  </div><!-- /agentsView -->
+
+  <div id="workDaysView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">חודש</span>
+        <select id="wdMonthSelect"></select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <label for="wdInput" class="muted" style="font-size:13px;">ימי עבודה</label>
+        <input type="number" id="wdInput" step="1" style="width:80px;" />
+        <button class="primary-movement" id="wdSaveBtn">שמור</button>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span id="wdSaveStatus" class="muted" style="font-size:12px;"></span>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="wdHistoryTable">
+          <thead>
+            <tr>
+              <th>חודש</th>
+              <th>ימי עבודה</th>
+              <th>תקן מלא (ימים × שעות תקן ליום)</th>
+            </tr>
+          </thead>
+          <tbody id="wdHistoryTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /workDaysView -->
+
 </div>
 
 <script>
@@ -621,7 +773,10 @@ function renderSalesCalcOnly() {
 /* ================= SHARED GLOBAL SETTINGS ================= */
 let workDays = 22;
 let hoursPerDay = 8.5;
-function fullStandard() { return workDays * hoursPerDay; }
+function fullStandard(workDaysOverride) {
+  const wd = workDaysOverride !== undefined && workDaysOverride !== null ? workDaysOverride : workDays;
+  return wd * hoursPerDay;
+}
 
 /* ================= GENERIC SCORE TIER FUNCTIONS ================= */
 function surveyScore(d) {
@@ -702,11 +857,11 @@ function updateServiceRow(id, field, value) {
   renderServiceCalcOnly();
   scheduleSave();
 }
-function computeServiceRow(r) {
+function computeServiceRow(r, workDaysOverride) {
   const survey = Number(r.surveyScore) || 0;
   const sSurvey = surveyScore(survey);
 
-  const fullStd = fullStandard();
+  const fullStd = fullStandard(workDaysOverride);
   const attendanceFactor = Number(r.attendanceFactor) || 0;
   const stdAfterFactor = fullStd - attendanceFactor;
   const workHours = Number(r.workHours) || 0;
@@ -801,8 +956,8 @@ function makeMovementRow() {
     digitalCount: '' // locked from file
   };
 }
-function computeMovementRow(r) {
-  const fullStd = fullStandard();
+function computeMovementRow(r, workDaysOverride) {
+  const fullStd = fullStandard(workDaysOverride);
   const attendanceFactor = Number(r.attendanceFactor) || 0;
   const stdAfterFactor = fullStd - attendanceFactor;
   const workHours = Number(r.workHours) || 0;
@@ -1009,10 +1164,13 @@ function bindRowEvents(tbody, updateFn, removeFn) {
 document.getElementById('addSalesRowBtn').addEventListener('click', addSalesRow);
 document.getElementById('addServiceRowBtn').addEventListener('click', addServiceRow);
 document.getElementById('yaad').addEventListener('input', (e) => { yaad = Number(e.target.value) || 0; renderSalesCalcOnly(); });
+let wdToolbarSaveTimer = null;
 document.getElementById('workDays').addEventListener('input', (e) => {
   workDays = Number(e.target.value) || 0;
   renderServiceCalcOnly(); tnuat.refresh(); meuhedet.refresh();
   document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+  clearTimeout(wdToolbarSaveTimer);
+  wdToolbarSaveTimer = setTimeout(() => saveMonthWorkDays(activeMonth, workDays), 600);
 });
 document.getElementById('hoursPerDay').addEventListener('input', (e) => {
   hoursPerDay = Number(e.target.value) || 0;
@@ -1362,6 +1520,45 @@ async function loadDeletedAgents() {
 function isDeletedAgent(empId, dept) {
   return deletedAgentsSet.has(`${String(empId).trim()}|${dept}`);
 }
+
+// Cache of month -> workDays, loaded from month_settings.
+let monthWorkDaysCache = {};
+
+async function loadMonthWorkDays(month) {
+  if (monthWorkDaysCache.hasOwnProperty(month)) return monthWorkDaysCache[month];
+  try {
+    const { data, error } = await sb.from('month_settings').select('work_days').eq('month', month).maybeSingle();
+    if (error) throw error;
+    const wd = data ? data.work_days : 22; // default when not yet configured
+    monthWorkDaysCache[month] = wd;
+    return wd;
+  } catch (err) {
+    console.error(err);
+    return 22;
+  }
+}
+
+async function loadAllMonthWorkDays() {
+  try {
+    const { data, error } = await sb.from('month_settings').select('month, work_days');
+    if (error) throw error;
+    (data || []).forEach(r => { monthWorkDaysCache[r.month] = r.work_days; });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function saveMonthWorkDays(month, days) {
+  try {
+    await sb.from('month_settings').upsert({ month, work_days: days, updated_at: new Date().toISOString() }, { onConflict: 'month' });
+    monthWorkDaysCache[month] = days;
+    return true;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
 let isLoadingMonth = false;
 let saveTimer = null;
 
@@ -1481,6 +1678,9 @@ async function loadMonth(month) {
   isLoadingMonth = true;
   setSyncStatus('טוען…');
   try {
+    workDays = await loadMonthWorkDays(month);
+    document.getElementById('workDays').value = workDays;
+
     const { data: agents, error: agentsErr } = await sb.from('agents').select('*');
     if (agentsErr) throw agentsErr;
 
@@ -1691,9 +1891,393 @@ async function resetAllData() {
 
 (async function init() {
   await loadDeletedAgents();
+  await loadAllMonthWorkDays();
   await populateMonthSelect();
   await loadMonth(activeMonth);
 })();
+
+/* ================= TAB NAVIGATION ================= */
+document.getElementById('navCalculator').addEventListener('click', () => switchTab('calculator'));
+document.getElementById('navAgents').addEventListener('click', () => switchTab('agents'));
+document.getElementById('navWorkDays').addEventListener('click', () => switchTab('workdays'));
+
+function switchTab(tab) {
+  const views = {
+    calculator: document.getElementById('calculatorView'),
+    agents: document.getElementById('agentsView'),
+    workdays: document.getElementById('workDaysView'),
+  };
+  const navs = {
+    calculator: document.getElementById('navCalculator'),
+    agents: document.getElementById('navAgents'),
+    workdays: document.getElementById('navWorkDays'),
+  };
+  Object.keys(views).forEach(key => {
+    views[key].style.display = key === tab ? '' : 'none';
+    navs[key].classList.toggle('active', key === tab);
+  });
+  if (tab === 'agents') initAgentsTabIfNeeded();
+  if (tab === 'workdays') initWorkDaysTabIfNeeded();
+}
+
+/* ================= AGENT BONUS TAB ================= */
+const DEPT_LABELS = {
+  sales: 'פריפיט - מכירות',
+  service: 'פריפיט - שירות',
+  tnuat: 'מובמנט - תנועת',
+  meuhedet: 'מובמנט - מאוחדת',
+};
+const DEPT_DOT_CLASS = {
+  sales: 'sales', service: 'service', tnuat: 'movement', meuhedet: 'movement',
+};
+
+let agentsTabLoaded = false;
+let selectedAgent = null; // { id, empId, firstName, lastName, department }
+let bonusChartInstance = null;
+let breakdownChartInstance = null;
+
+function computeBonusForRow(dept, row, workDaysOverride) {
+  if (dept === 'sales') {
+    const c = computeSalesRow({ ...row, sales: row.sales, trainingHours: row.trainingHours, workHours: row.workHours });
+    return {
+      total: c.totalBonus,
+      perHour: null,
+      components: {
+        '% עמידה ביעד': (c.pctTarget || 0) * 100,
+        'פריון לשעה': c.productivity || 0,
+      }
+    };
+  }
+  if (dept === 'service') {
+    const c = computeServiceRow(row, workDaysOverride);
+    return {
+      total: c.totalBonus,
+      perHour: c.bonusPerHour,
+      components: {
+        'סקרים': c.sSurvey * 100,
+        'נוכחות': c.sAttendance * 100,
+        'פניות לשעה': c.sCalls * 100,
+      }
+    };
+  }
+  // tnuat / meuhedet
+  const c = computeMovementRow(row, workDaysOverride);
+  const components = {
+    'בקרות': c.sControl * 100,
+    'נוכחות': c.sAttendance * 100,
+  };
+  if (c.hasCalls) components['שיחות'] = c.sCalls * 100;
+  if (c.hasDigital) components['דיגיטל'] = c.sDigital * 100;
+  return { total: c.totalBonus, perHour: c.bonusPerHour, components };
+}
+
+async function initAgentsTabIfNeeded() {
+  await populateAgentFilterMonth();
+  await refreshAgentsSummary();
+  agentsTabLoaded = true;
+}
+
+async function populateAgentFilterMonth() {
+  const sel = document.getElementById('agentFilterMonth');
+  const prevVal = sel.value;
+  sel.innerHTML = '<option value="">הכל</option>';
+  let months = new Set([currentMonth()]);
+  try {
+    const { data, error } = await sb.from('monthly_records').select('month');
+    if (!error && data) data.forEach(r => months.add(r.month));
+  } catch (err) { console.error(err); }
+  [...months].sort().reverse().forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = monthLabel(m);
+    sel.appendChild(opt);
+  });
+  if (prevVal) sel.value = prevVal;
+}
+
+async function refreshAgentsSummary() {
+  const deptFilter = document.getElementById('agentFilterDept').value;
+  const monthFilter = document.getElementById('agentFilterMonth').value || currentMonth();
+  const nameFilter = normalizeName(document.getElementById('agentSearchInput').value).toLowerCase();
+
+  const tbody = document.getElementById('agentsSummaryTbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:16px; text-align:center;">טוען…</td></tr>';
+
+  try {
+    let query = sb.from('agents').select('*');
+    if (deptFilter) query = query.eq('department', deptFilter);
+    const { data: agents, error: agentsErr } = await query;
+    if (agentsErr) throw agentsErr;
+
+    const { data: records, error: recErr } = await sb
+      .from('monthly_records')
+      .select('agent_id, data')
+      .eq('month', monthFilter);
+    if (recErr) throw recErr;
+
+    const recordByAgentId = {};
+    (records || []).forEach(r => { recordByAgentId[r.agent_id] = r.data || {}; });
+
+    const monthWd = await loadMonthWorkDays(monthFilter);
+
+    let rows = (agents || [])
+      .filter(a => !isDeletedAgent(a.emp_id, a.department))
+      .map(a => {
+        const monthly = recordByAgentId[a.id];
+        const fullName = normalizeName(`${a.first_name || ''} ${a.last_name || ''}`);
+        let bonus = null;
+        if (monthly) {
+          const row = { empId: a.emp_id, firstName: a.first_name, lastName: a.last_name, ...monthly };
+          bonus = computeBonusForRow(a.department, row, monthWd).total;
+        }
+        return { agent: a, fullName, bonus };
+      });
+
+    if (nameFilter) {
+      rows = rows.filter(r => r.fullName.toLowerCase().includes(nameFilter));
+    }
+
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:16px; text-align:center;">לא נמצאו נציגים מתאימים.</td></tr>';
+      return;
+    }
+
+    rows.sort((a, b) => a.fullName.localeCompare(b.fullName, 'he'));
+    rows.forEach(({ agent, fullName, bonus }) => {
+      const tr = document.createElement('tr');
+      tr.dataset.agentId = agent.id;
+      if (selectedAgent && selectedAgent.id === agent.id) tr.classList.add('selected');
+      tr.innerHTML = `
+        <td>${fullName || '(ללא שם)'}</td>
+        <td>${DEPT_LABELS[agent.department] || agent.department}</td>
+        <td class="num">${bonus === null ? '—' : fmt(bonus, 0) + ' ₪'}</td>
+        <td><button class="agent-select-btn">צפה במגמה</button></td>
+      `;
+      tr.addEventListener('click', () => selectAgent(agent));
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:16px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
+  }
+}
+
+document.getElementById('agentFilterDept').addEventListener('change', refreshAgentsSummary);
+document.getElementById('agentFilterMonth').addEventListener('change', refreshAgentsSummary);
+document.getElementById('agentSearchInput').addEventListener('input', () => {
+  clearTimeout(window._agentSearchDebounce);
+  window._agentSearchDebounce = setTimeout(refreshAgentsSummary, 250);
+});
+
+async function selectAgent(agent) {
+  selectedAgent = agent;
+  document.querySelectorAll('#agentsSummaryTbody tr').forEach(tr => {
+    tr.classList.toggle('selected', tr.dataset.agentId === agent.id);
+  });
+
+  document.getElementById('agentDetailEmpty').style.display = 'none';
+  document.getElementById('agentDetailView').style.display = '';
+  document.getElementById('agentDetailName').textContent = normalizeName(`${agent.first_name || ''} ${agent.last_name || ''}`) || '(ללא שם)';
+  document.getElementById('agentDetailMeta').textContent = `${DEPT_LABELS[agent.department] || agent.department} · ת"ז ${agent.emp_id}`;
+  document.getElementById('agentDetailDot').className = 'dot ' + (DEPT_DOT_CLASS[agent.department] || '');
+
+  await renderAgentCharts(agent);
+}
+
+async function renderAgentCharts(agent) {
+  try {
+    const { data: records, error } = await sb
+      .from('monthly_records')
+      .select('month, data')
+      .eq('agent_id', agent.id)
+      .order('month', { ascending: true });
+    if (error) throw error;
+
+    const recordList = records || [];
+    await Promise.all(recordList.map(r => loadMonthWorkDays(r.month)));
+
+    const points = recordList.map(r => {
+      const row = { empId: agent.emp_id, firstName: agent.first_name, lastName: agent.last_name, ...(r.data || {}) };
+      const monthWd = monthWorkDaysCache[r.month];
+      const c = computeBonusForRow(agent.department, row, monthWd);
+      return { month: r.month, label: monthLabel(r.month), total: c.total, perHour: c.perHour, components: c.components };
+    });
+
+    const labels = points.map(p => p.label);
+
+    if (bonusChartInstance) bonusChartInstance.destroy();
+    const bonusCtx = document.getElementById('agentBonusChart').getContext('2d');
+    const datasets = [{
+      label: 'בונוס סופי',
+      data: points.map(p => p.total),
+      borderColor: '#2D5C8A',
+      backgroundColor: 'rgba(45,92,138,0.12)',
+      tension: 0.3,
+      fill: true,
+    }];
+    if (points.some(p => p.perHour !== null && p.perHour !== undefined)) {
+      datasets.push({
+        label: 'בונוס לשעת עבודה',
+        data: points.map(p => p.perHour),
+        borderColor: '#B5601F',
+        backgroundColor: 'rgba(181,96,31,0.08)',
+        tension: 0.3,
+        yAxisID: 'y1',
+      });
+    }
+    bonusChartInstance = new Chart(bonusCtx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'בונוס סופי (₪)' } },
+          y1: datasets.length > 1 ? { beginAtZero: true, position: 'right', title: { display: true, text: 'בונוס לשעה (₪)' }, grid: { drawOnChartArea: false } } : undefined,
+        }
+      }
+    });
+
+    if (breakdownChartInstance) breakdownChartInstance.destroy();
+    const breakdownCtx = document.getElementById('agentBreakdownChart').getContext('2d');
+    const allComponentKeys = [...new Set(points.flatMap(p => Object.keys(p.components)))];
+    const palette = ['#1F6B5C', '#B5601F', '#2D5C8A', '#A33B2A', '#7A4115'];
+    const isSales = agent.department === 'sales';
+    const breakdownDatasets = allComponentKeys.map((key, idx) => {
+      const ds = {
+        label: key,
+        data: points.map(p => p.components[key] !== undefined ? p.components[key] : null),
+        borderColor: palette[idx % palette.length],
+        backgroundColor: palette[idx % palette.length],
+        tension: 0.3,
+        spanGaps: true,
+      };
+      if (isSales && key === 'פריון לשעה') ds.yAxisID = 'yRate';
+      return ds;
+    });
+    const breakdownScales = isSales
+      ? {
+          y: { beginAtZero: true, title: { display: true, text: '% עמידה ביעד' } },
+          yRate: { beginAtZero: true, position: 'right', title: { display: true, text: 'פריון לשעה' }, grid: { drawOnChartArea: false } },
+        }
+      : {
+          y: { beginAtZero: true, max: 120, title: { display: true, text: '% מדד' } },
+        };
+    breakdownChartInstance = new Chart(breakdownCtx, {
+      type: 'line',
+      data: { labels, datasets: breakdownDatasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: breakdownScales
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    showBanner('error', 'שגיאה בטעינת מגמת הנציג.');
+  }
+}
+
+/* ================= WORK DAYS SETTINGS TAB ================= */
+let workDaysTabLoaded = false;
+
+async function initWorkDaysTabIfNeeded() {
+  await populateWdMonthSelect();
+  await loadWdMonthValue(document.getElementById('wdMonthSelect').value || activeMonth);
+  await refreshWdHistory();
+  workDaysTabLoaded = true;
+}
+
+async function populateWdMonthSelect() {
+  const sel = document.getElementById('wdMonthSelect');
+  const prevVal = sel.value;
+  sel.innerHTML = '';
+
+  let months = new Set([currentMonth()]);
+  try {
+    const { data, error } = await sb.from('monthly_records').select('month');
+    if (!error && data) data.forEach(r => months.add(r.month));
+    const { data: wdData, error: wdErr } = await sb.from('month_settings').select('month');
+    if (!wdErr && wdData) wdData.forEach(r => months.add(r.month));
+  } catch (err) { console.error(err); }
+
+  const sorted = [...months].sort().reverse();
+  sorted.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m === currentMonth() ? `${monthLabel(m)} (נוכחי)` : monthLabel(m);
+    sel.appendChild(opt);
+  });
+  sel.value = prevVal && months.has(prevVal) ? prevVal : activeMonth;
+}
+
+async function loadWdMonthValue(month) {
+  const days = await loadMonthWorkDays(month);
+  document.getElementById('wdInput').value = days;
+  document.getElementById('wdSaveStatus').textContent = '';
+}
+
+document.getElementById('wdMonthSelect').addEventListener('change', async (e) => {
+  await loadWdMonthValue(e.target.value);
+});
+
+document.getElementById('wdSaveBtn').addEventListener('click', async () => {
+  const month = document.getElementById('wdMonthSelect').value;
+  const days = Number(document.getElementById('wdInput').value) || 0;
+  document.getElementById('wdSaveStatus').textContent = 'שומר…';
+  const ok = await saveMonthWorkDays(month, days);
+  document.getElementById('wdSaveStatus').textContent = ok ? `נשמר • ${new Date().toLocaleTimeString('he-IL')}` : 'שגיאת שמירה';
+
+  // If the saved month is the currently active month in the calculator, reflect it live.
+  if (month === activeMonth) {
+    workDays = days;
+    document.getElementById('workDays').value = days;
+    document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+    renderServiceCalcOnly(); tnuat.refresh(); meuhedet.refresh();
+  }
+
+  await refreshWdHistory();
+  await populateWdMonthSelect();
+  document.getElementById('wdMonthSelect').value = month;
+});
+
+async function refreshWdHistory() {
+  const tbody = document.getElementById('wdHistoryTbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+  try {
+    const { data, error } = await sb.from('month_settings').select('month, work_days').order('month', { ascending: false });
+    if (error) throw error;
+
+    const rows = [...(data || [])];
+    if (!rows.some(r => r.month === currentMonth())) {
+      rows.unshift({ month: currentMonth(), work_days: null });
+      rows.sort((a, b) => b.month.localeCompare(a.month));
+    }
+
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">אין נתונים עדיין.</td></tr>';
+      return;
+    }
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      if (r.month === currentMonth()) tr.classList.add('current-month');
+      const days = r.work_days;
+      const std = days !== null && days !== undefined ? fmt(days * hoursPerDay, 1) : '—';
+      tr.innerHTML = `
+        <td>${monthLabel(r.month)}${r.month === currentMonth() ? ' (נוכחי)' : ''}</td>
+        <td class="num">${days !== null && days !== undefined ? fmt(days, 0) : 'לא הוגדר'}</td>
+        <td class="num muted">${std}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
+  }
+}
+
 
 </script>
 </body>
