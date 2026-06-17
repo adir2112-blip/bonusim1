@@ -221,7 +221,21 @@
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
+      <button id="resetAllBtn" style="border-color:#C0392B;color:#C0392B;">מחיקת כל הנתונים</button>
+    </div>
+    <div class="divider-v"></div>
+    <div class="toolbar-group">
       <span id="syncStatus" class="muted" style="font-size:12px;"></span>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+
+  <div id="modalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
+    <div id="modalBox" style="background:var(--surface); border-radius:12px; padding:24px; max-width:420px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+      <p id="modalTitle" style="font-size:16px; font-weight:600; margin:0 0 10px;"></p>
+      <p id="modalBody" style="font-size:13.5px; color:var(--text-muted); margin:0 0 18px; line-height:1.5;"></p>
+      <div id="modalButtons" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;"></div>
     </div>
   </div>
 
@@ -262,8 +276,6 @@
       </div>
     </div>
   </div>
-
-  <div id="banner"></div>
 
   <div class="brand-block">
     <div class="brand-header">
@@ -463,6 +475,25 @@ function lockedCell(val, cellName, digits) {
   return `<td class="num muted" data-cell="${cellName}">${display}</td>`;
 }
 
+/* Generic modal: showModal(title, body, [{label, style, onClick}]) */
+function hideModal() {
+  document.getElementById('modalOverlay').style.display = 'none';
+}
+function showModal(title, body, buttons) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').textContent = body;
+  const btnContainer = document.getElementById('modalButtons');
+  btnContainer.innerHTML = '';
+  buttons.forEach(b => {
+    const btn = document.createElement('button');
+    btn.textContent = b.label;
+    if (b.style) Object.assign(btn.style, b.style);
+    btn.addEventListener('click', () => { hideModal(); b.onClick && b.onClick(); });
+    btnContainer.appendChild(btn);
+  });
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+
 /* ================= SALES (Periphate) ================= */
 const TIERS = [
   { min: 0,    max: 0.4,      rate: 0 },
@@ -482,6 +513,27 @@ function getRate(pct) {
 let salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
 let yaad = 1.5;
 
+function confirmRowDelete(empId, dept, doOneTimeDelete, doPermanentDelete) {
+  const idLabel = empId ? `(ת"ז ${empId})` : '';
+  showModal(
+    `מחיקת נציג ${idLabel}`,
+    'איך למחוק את הנציג? מחיקה לצמיתות מסירה אותו לתמיד מהמערכת ומונעת ממנו לחזור גם בחודשים עתידיים או בקבצים שיועלו בעתיד. מחיקה חד-פעמית מסירה אותו רק מהחודש הנוכחי.',
+    [
+      { label: 'ביטול', style: { background: 'var(--surface)' } },
+      { label: 'מחיקה חד-פעמית', style: { background: '#F3E6D6', borderColor: '#B5601F' }, onClick: doOneTimeDelete },
+      { label: 'מחיקה לצמיתות', style: { background: '#C0392B', color: '#fff', borderColor: '#C0392B' }, onClick: async () => {
+          if (empId) {
+            try {
+              await sb.from('deleted_agents').upsert({ emp_id: empId, department: dept }, { onConflict: 'emp_id,department' });
+            } catch (err) { console.error(err); }
+          }
+          doPermanentDelete();
+        }
+      },
+    ]
+  );
+}
+
 function addSalesRow() {
   salesRows.push({ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null });
   renderSales();
@@ -489,9 +541,18 @@ function addSalesRow() {
 }
 function removeSalesRow(id) {
   if (salesRows.length <= 1) return;
-  salesRows = salesRows.filter(r => r.id !== id);
-  renderSales();
-  scheduleSave();
+  const row = salesRows.find(r => r.id === id);
+  const empId = row ? String(row.empId || '').trim() : '';
+  confirmRowDelete(empId, 'sales', () => {
+    salesRows = salesRows.filter(r => r.id !== id);
+    renderSales();
+    scheduleSave();
+  }, async () => {
+    salesRows = salesRows.filter(r => r.id !== id);
+    if (empId) await deleteAgentFromDb(empId, 'sales');
+    renderSales();
+    scheduleSave();
+  });
 }
 function updateSalesRow(id, field, value) {
   const row = salesRows.find(r => r.id === id);
@@ -622,9 +683,18 @@ function addServiceRow() {
 }
 function removeServiceRow(id) {
   if (serviceRows.length <= 1) return;
-  serviceRows = serviceRows.filter(r => r.id !== id);
-  renderService();
-  scheduleSave();
+  const row = serviceRows.find(r => r.id === id);
+  const empId = row ? String(row.empId || '').trim() : '';
+  confirmRowDelete(empId, 'service', () => {
+    serviceRows = serviceRows.filter(r => r.id !== id);
+    renderService();
+    scheduleSave();
+  }, async () => {
+    serviceRows = serviceRows.filter(r => r.id !== id);
+    if (empId) await deleteAgentFromDb(empId, 'service');
+    renderService();
+    scheduleSave();
+  });
 }
 function updateServiceRow(id, field, value) {
   const row = serviceRows.find(r => r.id === id);
@@ -823,15 +893,24 @@ const movementHeaderHTML = `
   </thead>
 `;
 
-function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId) {
+function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, deptKey) {
   let rows = [makeMovementRow()];
 
   function add() { rows.push(makeMovementRow()); render(); scheduleSave(); }
   function remove(id) {
     if (rows.length <= 1) return;
-    rows = rows.filter(r => r.id !== id);
-    render();
-    scheduleSave();
+    const row = rows.find(r => r.id === id);
+    const empId = row ? String(row.empId || '').trim() : '';
+    confirmRowDelete(empId, deptKey, () => {
+      rows = rows.filter(r => r.id !== id);
+      render();
+      scheduleSave();
+    }, async () => {
+      rows = rows.filter(r => r.id !== id);
+      if (empId) await deleteAgentFromDb(empId, deptKey);
+      render();
+      scheduleSave();
+    });
   }
   function update(id, field, value) {
     const row = rows.find(r => r.id === id);
@@ -911,8 +990,8 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId) {
   };
 }
 
-const tnuat = makeMovementInstance('tnuatTable', 'tnuatTotalAgents', 'tnuatTotalBonus', 'addTnuatRowBtn');
-const meuhedet = makeMovementInstance('meuhedetTable', 'meuhedetTotalAgents', 'meuhedetTotalBonus', 'addMeuhedetRowBtn');
+const tnuat = makeMovementInstance('tnuatTable', 'tnuatTotalAgents', 'tnuatTotalBonus', 'addTnuatRowBtn', 'tnuat');
+const meuhedet = makeMovementInstance('meuhedetTable', 'meuhedetTotalAgents', 'meuhedetTotalBonus', 'addMeuhedetRowBtn', 'meuhedet');
 
 /* ================= SHARED EVENT BINDING ================= */
 function bindRowEvents(tbody, updateFn, removeFn) {
@@ -1008,6 +1087,17 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     else if (dept === DEPT_TNUAT) tnuatRowsFound++;
     else if (dept === DEPT_MEUHEDET) meuhedetRowsFound++;
   }
+
+  // Strip permanently deleted agents from this department's bucket so they never get recreated.
+  function purgeDeleted(bucket, dept) {
+    Object.keys(bucket).forEach(key => {
+      if (isDeletedAgent(key, dept)) delete bucket[key];
+    });
+  }
+  purgeDeleted(bySales, 'sales');
+  purgeDeleted(byService, 'service');
+  purgeDeleted(byTnuat, 'tnuat');
+  purgeDeleted(byMeuhedet, 'meuhedet');
 
   function applyToSimpleRows(rows, bucket, blankRowFactory) {
     let matched = 0, created = 0;
@@ -1258,6 +1348,20 @@ function shiftMonth(monthStr, delta) {
 }
 
 let activeMonth = currentMonth();
+let deletedAgentsSet = new Set(); // keys: `${empId}|${dept}`
+
+async function loadDeletedAgents() {
+  try {
+    const { data, error } = await sb.from('deleted_agents').select('emp_id, department');
+    if (error) throw error;
+    deletedAgentsSet = new Set((data || []).map(r => `${String(r.emp_id).trim()}|${r.department}`));
+  } catch (err) {
+    console.error(err);
+  }
+}
+function isDeletedAgent(empId, dept) {
+  return deletedAgentsSet.has(`${String(empId).trim()}|${dept}`);
+}
 let isLoadingMonth = false;
 let saveTimer = null;
 
@@ -1292,6 +1396,25 @@ async function scheduleSave() {
   clearTimeout(saveTimer);
   setSyncStatus('שומר…');
   saveTimer = setTimeout(saveAllToSupabase, 700);
+}
+
+async function deleteAgentFromDb(empId, dept) {
+  try {
+    const { data: agentRows, error: selErr } = await sb
+      .from('agents')
+      .select('id')
+      .eq('emp_id', empId)
+      .eq('department', dept)
+      .limit(1);
+    if (selErr) throw selErr;
+    if (agentRows && agentRows.length > 0) {
+      const agentId = agentRows[0].id;
+      await sb.from('monthly_records').delete().eq('agent_id', agentId);
+      await sb.from('agents').delete().eq('id', agentId);
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 async function saveAllToSupabase() {
@@ -1373,6 +1496,7 @@ async function loadMonth(month) {
     const byDept = { sales: [], service: [], tnuat: [], meuhedet: [] };
     (agents || []).forEach(a => {
       if (!byDept.hasOwnProperty(a.department)) return;
+      if (isDeletedAgent(a.emp_id, a.department)) return;
       const monthly = recordByAgentId[a.id] || blankMonthlyDefaultsFor(a.department);
       const row = {
         id: uid(),
@@ -1517,7 +1641,56 @@ document.getElementById('newMonthBtn').addEventListener('click', async () => {
   await scheduleSave();
 });
 
+document.getElementById('resetAllBtn').addEventListener('click', () => {
+  showModal(
+    'מחיקת כל הנתונים',
+    'פעולה זו תמחק לצמיתות את כל הנציגים, כל הנתונים החודשיים, וכל סטטוס ההעלאות בכל המחלקות (פריפיט ומובמנט), בכל החודשים. גם רשימת הנציגים שנמחקו לצמיתות תתאפס. הפעולה אינה הפיכה. להמשיך?',
+    [
+      { label: 'ביטול', style: { background: 'var(--surface)' } },
+      { label: 'מחק את הכל', style: { background: '#C0392B', color: '#fff', borderColor: '#C0392B' }, onClick: resetAllData },
+    ]
+  );
+});
+
+async function resetAllData() {
+  setSyncStatus('מוחק הכל…');
+  try {
+    await sb.from('monthly_records').delete().not('id', 'is', null);
+    await sb.from('agents').delete().not('id', 'is', null);
+    await sb.from('upload_status').delete().not('id', 'is', null);
+    await sb.from('deleted_agents').delete().not('emp_id', 'is', null);
+
+    deletedAgentsSet = new Set();
+    isLoadingMonth = true;
+    activeMonth = currentMonth();
+    salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+    serviceRows = [{
+      id: uid(), empId: '', lastName: '', firstName: '',
+      surveyScore: '', workHours: null, attendanceFactor: 0,
+      closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+    }];
+    tnuat.setRows([makeMovementRow()]);
+    meuhedet.setRows([makeMovementRow()]);
+    renderSales();
+    renderService();
+    tnuat.render();
+    meuhedet.render();
+    isLoadingMonth = false;
+
+    await populateMonthSelect();
+    document.getElementById('monthSelect').value = activeMonth;
+    await refreshUploadButtons(activeMonth);
+    showBanner('ok', 'כל הנתונים נמחקו. המערכת מוכנה לקובץ חדש.');
+    setSyncStatus('אופס הושלם');
+  } catch (err) {
+    console.error(err);
+    showBanner('error', 'שגיאה במחיקת הנתונים. נסה שוב.');
+    setSyncStatus('שגיאה');
+  }
+}
+
 (async function init() {
+  await loadDeletedAgents();
   await populateMonthSelect();
   await loadMonth(activeMonth);
 })();
