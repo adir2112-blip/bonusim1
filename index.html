@@ -1187,6 +1187,27 @@ const DEPT_SERVICE = normalizeDept('פריפיט - שירות');
 const DEPT_TNUAT = normalizeDept('מובמנט - מובמנט');
 const DEPT_MEUHEDET = normalizeDept('מובמנט - מאוחדת');
 
+function fixSheetRange(ws) {
+  // Some exported reports embed an incorrect <dimension> tag (e.g. A1:C9)
+  // that understates the real data range. Recompute the true bounds from
+  // actual cell keys so no rows are silently dropped.
+  let maxRow = 0, maxCol = 0, minRow = Infinity, minCol = Infinity;
+  let found = false;
+  Object.keys(ws).forEach(key => {
+    if (key[0] === '!') return;
+    found = true;
+    const cell = XLSX.utils.decode_cell(key);
+    if (cell.r > maxRow) maxRow = cell.r;
+    if (cell.c > maxCol) maxCol = cell.c;
+    if (cell.r < minRow) minRow = cell.r;
+    if (cell.c < minCol) minCol = cell.c;
+  });
+  if (found) {
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: minRow, c: minCol }, e: { r: maxRow, c: maxCol } });
+  }
+  return ws;
+}
+
 function bindFileButton(btnId, inputId, onLoad) {
   document.getElementById(btnId).addEventListener('click', () => document.getElementById(inputId).click());
   document.getElementById(inputId).addEventListener('change', async (e) => {
@@ -1195,7 +1216,7 @@ function bindFileButton(btnId, inputId, onLoad) {
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const sheet = fixSheetRange(wb.Sheets[wb.SheetNames[0]]);
       const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
       await onLoad(data);
     } catch (err) {
@@ -1213,6 +1234,7 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
   const bySales = {}, byService = {}, byTnuat = {}, byMeuhedet = {};
   let salesRowsFound = 0, serviceRowsFound = 0, tnuatRowsFound = 0, meuhedetRowsFound = 0;
   const seenDepts = new Set();
+  let skippedNoId = 0, skippedBadHours = 0, skippedNotString = 0, processedRows = 0;
 
   for (let i = 0; i < data.length; i++) {
     const r = data[i];
@@ -1220,8 +1242,10 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     const idVal = r[COL_TZ];
     const deptVal = r[COL_DEPT];
     const hoursVal = Number(r[COL_HOURS]);
-    if (idVal === null || idVal === undefined || idVal === '' || isNaN(hoursVal)) continue;
-    if (typeof deptVal !== 'string') continue;
+    if (idVal === null || idVal === undefined || idVal === '') { skippedNoId++; continue; }
+    if (isNaN(hoursVal)) { skippedBadHours++; continue; }
+    if (typeof deptVal !== 'string') { skippedNotString++; continue; }
+    processedRows++;
     const dept = normalizeDept(deptVal);
     const key = String(idVal).trim();
     const lastName = r[COL_LAST] != null ? String(r[COL_LAST]).trim() : '';
@@ -1347,7 +1371,8 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     const recognized = [DEPT_SALES, DEPT_SERVICE, DEPT_TNUAT, DEPT_MEUHEDET];
     const unrecognized = [...seenDepts].filter(d => !recognized.includes(d)).slice(0, 5);
     const sample = unrecognized.length ? ` שמות מחלקה שנמצאו בקובץ: ${unrecognized.map(d => '"' + d + '"').join(', ')}.` : '';
-    showBanner('error', `לא נמצאו שורות עם שם מחלקה מתאים בעמודה G.${sample}`);
+    const diag = ` (סה"כ שורות בקובץ: ${data.length}, דולגו ללא ת"ז: ${skippedNoId}, דולגו עם שעות לא תקינות: ${skippedBadHours}, דולגו כי עמודה G אינה טקסט: ${skippedNotString}, שורות שעובדו: ${processedRows})`;
+    showBanner('error', `לא נמצאו שורות עם שם מחלקה מתאים בעמודה G.${sample}${diag}`);
   } else {
     showBanner('ok', `הקובץ נטען. פריפיט מכירות: ${salesResult.matched} עודכנו, ${salesResult.created} נוצרו. פריפיט שירות: ${serviceResult.matched} עודכנו, ${serviceResult.created} נוצרו. תנועת: ${tnuatResult.matched} עודכנו, ${tnuatResult.created} נוצרו. מאוחדת: ${meuhedetResult.matched} עודכנו, ${meuhedetResult.created} נוצרו.`);
   }
