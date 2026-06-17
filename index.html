@@ -291,13 +291,17 @@
 
   <div class="global-toolbar">
     <div class="toolbar-group">
-      <span class="toolbar-label">קבצי דוח פריפיט</span>
+      <span class="toolbar-label">קבצי דוח משותפים</span>
       <button id="uploadHoursBtn">שעות עבודה</button>
       <input type="file" id="hoursInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadCallsBtn">פניות / דיגיטל</button>
+      <input type="file" id="callsInput" accept=".xlsx,.xls,.csv" style="display:none" />
+    </div>
+    <div class="divider-v"></div>
+    <div class="toolbar-group">
+      <span class="toolbar-label">קבצי דוח פריפיט</span>
       <button id="uploadSurveyBtn">ציון סקרים</button>
       <input type="file" id="surveyInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadCallsBtn">פניות שנסגרו</button>
-      <input type="file" id="callsInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
@@ -306,8 +310,6 @@
       <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
       <button id="uploadMvCallsBtn">שיחות טלפוניות</button>
       <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadMvDigitalBtn">דיגיטל</button>
-      <input type="file" id="mvDigitalInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
@@ -1421,14 +1423,19 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
     const key = normalizeName(nameVal);
     sums[key] = (sums[key] || 0) + val;
   }
-  let matched = 0;
+  let matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
   serviceRows.forEach(r => {
     const full = normalizeName(`${r.firstName} ${r.lastName}`);
-    if (full && sums.hasOwnProperty(full)) { r.closedCalls = sums[full]; matched++; }
+    if (full && sums.hasOwnProperty(full)) { r.closedCalls = sums[full]; matchedService++; }
   });
-  showBanner('ok', `פניות שנסגרו נטענו (מסוכמות) ל-${matched} נציגים, לפי התאמת שם מלא.`);
+  Object.keys(sums).forEach(key => {
+    if (tnuat.setByFullName(key, 'digitalCount', sums[key])) matchedTnuat++;
+    if (meuhedet.setByFullName(key, 'digitalCount', sums[key])) matchedMeuhedet++;
+  });
+  showBanner('ok', `הקובץ נטען לפי התאמת שם מלא. פריפיט שירות (פניות שנסגרו): ${matchedService} נציגים. תנועת (דיגיטל): ${matchedTnuat} נציגים. מאוחדת (דיגיטל): ${matchedMeuhedet} נציגים.`);
   renderServiceCalcOnly();
-  if (matched > 0) markUploaded('calls');
+  tnuat.refresh(); meuhedet.refresh();
+  if (matchedService > 0 || matchedTnuat > 0 || matchedMeuhedet > 0) markUploaded('calls');
   scheduleSave();
 });
 
@@ -1477,28 +1484,6 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
   showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
-  scheduleSave();
-});
-
-bindFileButton('uploadMvDigitalBtn', 'mvDigitalInput', (data) => {
-  const sums = {};
-  for (let i = 0; i < data.length; i++) {
-    const r = data[i];
-    if (!r) continue;
-    const nameVal = r[0]; // column A
-    const val = Number(r[2]); // column C
-    if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(val)) continue;
-    const key = normalizeName(nameVal);
-    sums[key] = (sums[key] || 0) + val;
-  }
-  let matchedT = 0, matchedM = 0;
-  Object.keys(sums).forEach(key => {
-    if (tnuat.setByFullName(key, 'digitalCount', sums[key])) matchedT++;
-    if (meuhedet.setByFullName(key, 'digitalCount', sums[key])) matchedM++;
-  });
-  showBanner('ok', `כמות דיגיטל נטענה. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
-  tnuat.refresh(); meuhedet.refresh();
-  if (matchedT > 0 || matchedM > 0) markUploaded('mv_digital');
   scheduleSave();
 });
 
@@ -1763,7 +1748,6 @@ const UPLOAD_BUTTON_IDS = {
   calls: 'uploadCallsBtn',
   mv_control: 'uploadMvControlBtn',
   mv_calls: 'uploadMvCallsBtn',
-  mv_digital: 'uploadMvDigitalBtn',
 };
 
 async function markUploaded(uploadKey) {
