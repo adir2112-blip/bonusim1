@@ -969,9 +969,14 @@ function bindFileButton(btnId, inputId, onLoad) {
 }
 
 bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
-  const sumsSales = {}, sumsService = {}, sumsTnuat = {}, sumsMeuhedet = {};
+  const COL_LAST = 3;  // D
+  const COL_FIRST = 4; // E
+
+  // key -> { hours, firstName, lastName }
+  const bySales = {}, byService = {}, byTnuat = {}, byMeuhedet = {};
   let salesRowsFound = 0, serviceRowsFound = 0, tnuatRowsFound = 0, meuhedetRowsFound = 0;
   const seenDepts = new Set();
+
   for (let i = 0; i < data.length; i++) {
     const r = data[i];
     if (!r) continue;
@@ -982,23 +987,113 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     if (typeof deptVal !== 'string') continue;
     const dept = normalizeDept(deptVal);
     const key = String(idVal).trim();
+    const lastName = r[COL_LAST] != null ? String(r[COL_LAST]).trim() : '';
+    const firstName = r[COL_FIRST] != null ? String(r[COL_FIRST]).trim() : '';
     seenDepts.add(dept);
-    if (dept === DEPT_SALES) { sumsSales[key] = (sumsSales[key] || 0) + hoursVal; salesRowsFound++; }
-    else if (dept === DEPT_SERVICE) { sumsService[key] = (sumsService[key] || 0) + hoursVal; serviceRowsFound++; }
-    else if (dept === DEPT_TNUAT) { sumsTnuat[key] = (sumsTnuat[key] || 0) + hoursVal; tnuatRowsFound++; }
-    else if (dept === DEPT_MEUHEDET) { sumsMeuhedet[key] = (sumsMeuhedet[key] || 0) + hoursVal; meuhedetRowsFound++; }
+
+    const bucket = dept === DEPT_SALES ? bySales
+      : dept === DEPT_SERVICE ? byService
+      : dept === DEPT_TNUAT ? byTnuat
+      : dept === DEPT_MEUHEDET ? byMeuhedet
+      : null;
+    if (!bucket) continue;
+
+    if (!bucket[key]) bucket[key] = { hours: 0, firstName, lastName };
+    bucket[key].hours += hoursVal;
+    if (firstName) bucket[key].firstName = firstName;
+    if (lastName) bucket[key].lastName = lastName;
+
+    if (dept === DEPT_SALES) salesRowsFound++;
+    else if (dept === DEPT_SERVICE) serviceRowsFound++;
+    else if (dept === DEPT_TNUAT) tnuatRowsFound++;
+    else if (dept === DEPT_MEUHEDET) meuhedetRowsFound++;
   }
-  let matchedSales = 0, matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
-  salesRows.forEach(r => {
-    const key = String(r.empId).trim();
-    if (key && sumsSales.hasOwnProperty(key)) { r.workHours = sumsSales[key]; matchedSales++; }
-  });
-  serviceRows.forEach(r => {
-    const key = String(r.empId).trim();
-    if (key && sumsService.hasOwnProperty(key)) { r.workHours = sumsService[key]; matchedService++; }
-  });
-  Object.keys(sumsTnuat).forEach(key => { if (tnuat.setWorkHoursById(key, sumsTnuat[key])) matchedTnuat++; });
-  Object.keys(sumsMeuhedet).forEach(key => { if (meuhedet.setWorkHoursById(key, sumsMeuhedet[key])) matchedMeuhedet++; });
+
+  function applyToSimpleRows(rows, bucket, blankRowFactory) {
+    let matched = 0, created = 0;
+    const existingKeys = new Set(rows.map(r => String(r.empId).trim()).filter(k => k));
+    Object.keys(bucket).forEach(key => {
+      const info = bucket[key];
+      if (existingKeys.has(key)) {
+        const row = rows.find(r => String(r.empId).trim() === key);
+        row.workHours = info.hours;
+        if (info.firstName) row.firstName = info.firstName;
+        if (info.lastName) row.lastName = info.lastName;
+        matched++;
+      } else {
+        const blank = blankRowFactory();
+        blank.empId = key;
+        blank.firstName = info.firstName;
+        blank.lastName = info.lastName;
+        blank.workHours = info.hours;
+        rows.push(blank);
+        created++;
+      }
+    });
+    return { matched, created };
+  }
+
+  const salesResult = applyToSimpleRows(salesRows, bySales, () => ({
+    id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null
+  }));
+  const serviceResult = applyToSimpleRows(serviceRows, byService, () => ({
+    id: uid(), empId: '', lastName: '', firstName: '',
+    surveyScore: '', workHours: null, attendanceFactor: 0,
+    closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+  }));
+
+  function applyToMovement(instance, bucket) {
+    let matched = 0, created = 0;
+    const rows = instance.getRows();
+    const existingKeys = new Set(rows.map(r => String(r.empId).trim()).filter(k => k));
+    Object.keys(bucket).forEach(key => {
+      const info = bucket[key];
+      if (existingKeys.has(key)) {
+        instance.setWorkHoursById(key, info.hours);
+        if (info.firstName || info.lastName) {
+          rows.forEach(r => {
+            if (String(r.empId).trim() === key) {
+              if (info.firstName) r.firstName = info.firstName;
+              if (info.lastName) r.lastName = info.lastName;
+            }
+          });
+        }
+        matched++;
+      } else {
+        const blank = makeMovementRow();
+        blank.empId = key;
+        blank.firstName = info.firstName;
+        blank.lastName = info.lastName;
+        blank.workHours = info.hours;
+        rows.push(blank);
+        created++;
+      }
+    });
+    return { matched, created };
+  }
+
+  const tnuatResult = applyToMovement(tnuat, byTnuat);
+  const meuhedetResult = applyToMovement(meuhedet, byMeuhedet);
+
+  // Remove the original placeholder blank row if real rows were created and the blank is still empty.
+  function dropEmptyPlaceholder(rows) {
+    if (rows.length > 1) {
+      const idx = rows.findIndex(r => !String(r.empId).trim());
+      if (idx !== -1) rows.splice(idx, 1);
+    }
+  }
+  dropEmptyPlaceholder(salesRows);
+  dropEmptyPlaceholder(serviceRows);
+  const tnuatRows = tnuat.getRows();
+  if (tnuatRows.length > 1) {
+    const idx = tnuatRows.findIndex(r => !String(r.empId).trim());
+    if (idx !== -1) tnuatRows.splice(idx, 1);
+  }
+  const meuhedetRows = meuhedet.getRows();
+  if (meuhedetRows.length > 1) {
+    const idx = meuhedetRows.findIndex(r => !String(r.empId).trim());
+    if (idx !== -1) meuhedetRows.splice(idx, 1);
+  }
 
   if (salesRowsFound === 0 && serviceRowsFound === 0 && tnuatRowsFound === 0 && meuhedetRowsFound === 0) {
     const recognized = [DEPT_SALES, DEPT_SERVICE, DEPT_TNUAT, DEPT_MEUHEDET];
@@ -1006,12 +1101,13 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     const sample = unrecognized.length ? ` שמות מחלקה שנמצאו בקובץ: ${unrecognized.map(d => '"' + d + '"').join(', ')}.` : '';
     showBanner('error', `לא נמצאו שורות עם שם מחלקה מתאים בעמודה G.${sample}`);
   } else {
-    showBanner('ok', `הקובץ נטען. פריפיט מכירות: נמצאו ${salesRowsFound} שורות, הותאמו ${matchedSales} נציגים. פריפיט שירות: נמצאו ${serviceRowsFound}, הותאמו ${matchedService}. תנועת: נמצאו ${tnuatRowsFound}, הותאמו ${matchedTnuat}. מאוחדת: נמצאו ${meuhedetRowsFound}, הותאמו ${matchedMeuhedet}.`);
+    showBanner('ok', `הקובץ נטען. פריפיט מכירות: ${salesResult.matched} עודכנו, ${salesResult.created} נוצרו. פריפיט שירות: ${serviceResult.matched} עודכנו, ${serviceResult.created} נוצרו. תנועת: ${tnuatResult.matched} עודכנו, ${tnuatResult.created} נוצרו. מאוחדת: ${meuhedetResult.matched} עודכנו, ${meuhedetResult.created} נוצרו.`);
   }
-  renderSalesCalcOnly();
-  renderServiceCalcOnly();
-  tnuat.refresh();
-  meuhedet.refresh();
+
+  renderSales();
+  renderService();
+  tnuat.render();
+  meuhedet.render();
   if (salesRowsFound > 0 || serviceRowsFound > 0 || tnuatRowsFound > 0 || meuhedetRowsFound > 0) {
     markUploaded('hours');
   }
