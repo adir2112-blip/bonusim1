@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת בונוסים - פריפיט ומובמנט</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root {
     --bg: #FAF8F4;
@@ -192,6 +193,16 @@
   .hint { font-size: 12px; color: var(--text-muted); margin-top: 8px; margin-bottom: 4px; }
   ::-webkit-scrollbar { height: 8px; }
   ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  button.uploaded { background: var(--success-bg); border-color: #6FAE5A; color: var(--success-text); }
+  button.uploaded:hover { background: #DCEBD3; }
+  select#monthSelect {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+  }
   .col-divider { border-right: 2px solid var(--border-strong); }
 </style>
 </head>
@@ -201,6 +212,18 @@
     <p class="eyebrow">מערכת בונוסים &middot; פריפיט ומובמנט</p>
     <h1>חישוב בונוס נציגים</h1>
   </header>
+
+  <div class="global-toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label">חודש</span>
+      <select id="monthSelect"></select>
+      <button id="newMonthBtn">+ חודש חדש</button>
+    </div>
+    <div class="divider-v"></div>
+    <div class="toolbar-group">
+      <span id="syncStatus" class="muted" style="font-size:12px;"></span>
+    </div>
+  </div>
 
   <div class="global-toolbar">
     <div class="toolbar-group">
@@ -462,16 +485,19 @@ let yaad = 1.5;
 function addSalesRow() {
   salesRows.push({ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null });
   renderSales();
+  scheduleSave();
 }
 function removeSalesRow(id) {
   if (salesRows.length <= 1) return;
   salesRows = salesRows.filter(r => r.id !== id);
   renderSales();
+  scheduleSave();
 }
 function updateSalesRow(id, field, value) {
   const row = salesRows.find(r => r.id === id);
   if (row) row[field] = value;
   renderSalesCalcOnly();
+  scheduleSave();
 }
 function computeSalesRow(r) {
   const sales = Number(r.sales) || 0;
@@ -592,16 +618,19 @@ function addServiceRow() {
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   });
   renderService();
+  scheduleSave();
 }
 function removeServiceRow(id) {
   if (serviceRows.length <= 1) return;
   serviceRows = serviceRows.filter(r => r.id !== id);
   renderService();
+  scheduleSave();
 }
 function updateServiceRow(id, field, value) {
   const row = serviceRows.find(r => r.id === id);
   if (row) row[field] = value;
   renderServiceCalcOnly();
+  scheduleSave();
 }
 function computeServiceRow(r) {
   const survey = Number(r.surveyScore) || 0;
@@ -797,16 +826,18 @@ const movementHeaderHTML = `
 function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId) {
   let rows = [makeMovementRow()];
 
-  function add() { rows.push(makeMovementRow()); render(); }
+  function add() { rows.push(makeMovementRow()); render(); scheduleSave(); }
   function remove(id) {
     if (rows.length <= 1) return;
     rows = rows.filter(r => r.id !== id);
     render();
+    scheduleSave();
   }
   function update(id, field, value) {
     const row = rows.find(r => r.id === id);
     if (row) row[field] = value;
     renderCalcOnly();
+    scheduleSave();
   }
   function render() {
     const table = document.getElementById(tableId);
@@ -854,6 +885,8 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId) {
 
   return {
     getRows: () => rows,
+    setRows: (newRows) => { rows = newRows; },
+    render: render,
     setWorkHoursById: (empId, hours) => {
       const row = rows.find(r => String(r.empId).trim() === empId);
       if (row) { row.workHours = hours; return true; }
@@ -979,6 +1012,10 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
   renderServiceCalcOnly();
   tnuat.refresh();
   meuhedet.refresh();
+  if (salesRowsFound > 0 || serviceRowsFound > 0 || tnuatRowsFound > 0 || meuhedetRowsFound > 0) {
+    markUploaded('hours');
+  }
+  scheduleSave();
 });
 
 bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
@@ -1000,6 +1037,8 @@ bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
   });
   showBanner('ok', `ציון סקרים נטען (ממוצע) ל-${matched} נציגים, לפי התאמת שם מלא.`);
   renderServiceCalcOnly();
+  if (matched > 0) markUploaded('survey');
+  scheduleSave();
 });
 
 bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
@@ -1020,6 +1059,8 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
   });
   showBanner('ok', `פניות שנסגרו נטענו (מסוכמות) ל-${matched} נציגים, לפי התאמת שם מלא.`);
   renderServiceCalcOnly();
+  if (matched > 0) markUploaded('calls');
+  scheduleSave();
 });
 
 /* ================= FILE UPLOADS: MOVEMENT ================= */
@@ -1041,6 +1082,8 @@ bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
   });
   showBanner('ok', `ציון בקרה נטען. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
+  if (matchedT > 0 || matchedM > 0) markUploaded('mv_control');
+  scheduleSave();
 });
 
 bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
@@ -1064,6 +1107,8 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
   });
   showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
+  if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
+  scheduleSave();
 });
 
 bindFileButton('uploadMvDigitalBtn', 'mvDigitalInput', (data) => {
@@ -1084,10 +1129,303 @@ bindFileButton('uploadMvDigitalBtn', 'mvDigitalInput', (data) => {
   });
   showBanner('ok', `כמות דיגיטל נטענה. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
+  if (matchedT > 0 || matchedM > 0) markUploaded('mv_digital');
+  scheduleSave();
 });
 
 renderSales();
 renderService();
+
+/* ================= PERSISTENCE LAYER (Supabase) ================= */
+const SUPABASE_URL = 'https://pmsrezoyzycxgerxbtka.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtc3Jlem95enljeGdlcnhidGthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzAwMzAsImV4cCI6MjA5NzIwNjAzMH0.lo6n7u3XIHHMSrJzzvEQntrqR2Had78HYjAL8JXibeo';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Fields that belong to the agent roster (carry forward between months) vs monthly data (reset each month).
+const ROSTER_FIELDS = ['empId', 'firstName', 'lastName'];
+
+function currentMonth() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+function monthLabel(monthStr) {
+  // '2026-04' -> '04/26'
+  const [y, m] = monthStr.split('-');
+  return `${m}/${y.slice(2)}`;
+}
+function shiftMonth(monthStr, delta) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+let activeMonth = currentMonth();
+let isLoadingMonth = false;
+let saveTimer = null;
+
+function setSyncStatus(text) {
+  document.getElementById('syncStatus').textContent = text;
+}
+
+function rowMonthlyData(row, dept) {
+  const out = {};
+  Object.keys(row).forEach(k => {
+    if (k === 'id' || ROSTER_FIELDS.includes(k)) return;
+    out[k] = row[k];
+  });
+  return out;
+}
+
+function blankMonthlyDefaultsFor(dept) {
+  if (dept === 'sales') return { sales: '', trainingHours: '', workHours: null };
+  if (dept === 'service') return {
+    surveyScore: '', workHours: null, attendanceFactor: 0,
+    closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+  };
+  // tnuat / meuhedet
+  return {
+    controlScoreRaw: '', workHours: null, attendanceFactor: 0,
+    callsCount: '', digitalCount: ''
+  };
+}
+
+async function scheduleSave() {
+  if (isLoadingMonth) return;
+  clearTimeout(saveTimer);
+  setSyncStatus('שומר…');
+  saveTimer = setTimeout(saveAllToSupabase, 700);
+}
+
+async function saveAllToSupabase() {
+  try {
+    const allDepts = [
+      { key: 'sales', rows: salesRows },
+      { key: 'service', rows: serviceRows },
+      { key: 'tnuat', rows: tnuat.getRows() },
+      { key: 'meuhedet', rows: meuhedet.getRows() },
+    ];
+
+    for (const { key, rows } of allDepts) {
+      for (const row of rows) {
+        const empId = String(row.empId || '').trim();
+        if (!empId) continue; // don't persist rows without an ID yet
+
+        const { data: agentRows, error: selErr } = await sb
+          .from('agents')
+          .select('id')
+          .eq('emp_id', empId)
+          .eq('department', key)
+          .limit(1);
+        if (selErr) throw selErr;
+
+        let agentId;
+        if (agentRows && agentRows.length > 0) {
+          agentId = agentRows[0].id;
+          await sb.from('agents').update({
+            first_name: row.firstName || '',
+            last_name: row.lastName || ''
+          }).eq('id', agentId);
+        } else {
+          const { data: inserted, error: insErr } = await sb
+            .from('agents')
+            .insert({
+              emp_id: empId,
+              first_name: row.firstName || '',
+              last_name: row.lastName || '',
+              department: key
+            })
+            .select('id')
+            .single();
+          if (insErr) throw insErr;
+          agentId = inserted.id;
+        }
+
+        const monthlyData = rowMonthlyData(row, key);
+        await sb.from('monthly_records').upsert({
+          agent_id: agentId,
+          month: activeMonth,
+          data: monthlyData,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'agent_id,month' });
+      }
+    }
+    setSyncStatus(`נשמר • ${new Date().toLocaleTimeString('he-IL')}`);
+  } catch (err) {
+    console.error(err);
+    setSyncStatus('שגיאת שמירה — בדוק חיבור');
+  }
+}
+
+async function loadMonth(month) {
+  isLoadingMonth = true;
+  setSyncStatus('טוען…');
+  try {
+    const { data: agents, error: agentsErr } = await sb.from('agents').select('*');
+    if (agentsErr) throw agentsErr;
+
+    const { data: records, error: recErr } = await sb
+      .from('monthly_records')
+      .select('agent_id, data')
+      .eq('month', month);
+    if (recErr) throw recErr;
+
+    const recordByAgentId = {};
+    (records || []).forEach(r => { recordByAgentId[r.agent_id] = r.data || {}; });
+
+    const byDept = { sales: [], service: [], tnuat: [], meuhedet: [] };
+    (agents || []).forEach(a => {
+      if (!byDept.hasOwnProperty(a.department)) return;
+      const monthly = recordByAgentId[a.id] || blankMonthlyDefaultsFor(a.department);
+      const row = {
+        id: uid(),
+        empId: a.emp_id,
+        firstName: a.first_name || '',
+        lastName: a.last_name || '',
+        ...monthly
+      };
+      byDept[a.department].push(row);
+    });
+
+    salesRows = byDept.sales.length ? byDept.sales : [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+    serviceRows = byDept.service.length ? byDept.service : [{
+      id: uid(), empId: '', lastName: '', firstName: '',
+      surveyScore: '', workHours: null, attendanceFactor: 0,
+      closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+    }];
+    tnuat.setRows(byDept.tnuat.length ? byDept.tnuat : [makeMovementRow()]);
+    meuhedet.setRows(byDept.meuhedet.length ? byDept.meuhedet : [makeMovementRow()]);
+
+    renderSales();
+    renderService();
+    tnuat.render();
+    meuhedet.render();
+
+    await refreshUploadButtons(month);
+    setSyncStatus(`נטען • ${new Date().toLocaleTimeString('he-IL')}`);
+  } catch (err) {
+    console.error(err);
+    setSyncStatus('שגיאת טעינה — בדוק חיבור');
+  } finally {
+    isLoadingMonth = false;
+  }
+}
+
+const UPLOAD_BUTTON_IDS = {
+  hours: 'uploadHoursBtn',
+  survey: 'uploadSurveyBtn',
+  calls: 'uploadCallsBtn',
+  mv_control: 'uploadMvControlBtn',
+  mv_calls: 'uploadMvCallsBtn',
+  mv_digital: 'uploadMvDigitalBtn',
+};
+
+async function markUploaded(uploadKey) {
+  try {
+    await sb.from('upload_status').upsert({
+      month: activeMonth,
+      upload_key: uploadKey,
+      uploaded_at: new Date().toISOString()
+    }, { onConflict: 'month,upload_key' });
+    const btn = document.getElementById(UPLOAD_BUTTON_IDS[uploadKey]);
+    if (btn) btn.classList.add('uploaded');
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function refreshUploadButtons(month) {
+  Object.values(UPLOAD_BUTTON_IDS).forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.classList.remove('uploaded');
+  });
+  try {
+    const { data, error } = await sb.from('upload_status').select('upload_key').eq('month', month);
+    if (error) throw error;
+    (data || []).forEach(r => {
+      const btn = document.getElementById(UPLOAD_BUTTON_IDS[r.upload_key]);
+      if (btn) btn.classList.add('uploaded');
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function populateMonthSelect() {
+  const sel = document.getElementById('monthSelect');
+  sel.innerHTML = '';
+
+  let months = new Set([currentMonth()]);
+  try {
+    const { data, error } = await sb.from('monthly_records').select('month');
+    if (!error && data) data.forEach(r => months.add(r.month));
+  } catch (err) { console.error(err); }
+
+  const sorted = [...months].sort().reverse();
+  sorted.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m === currentMonth() ? `${monthLabel(m)} (נוכחי)` : monthLabel(m);
+    sel.appendChild(opt);
+  });
+  sel.value = activeMonth;
+}
+
+document.getElementById('monthSelect').addEventListener('change', async (e) => {
+  activeMonth = e.target.value;
+  await loadMonth(activeMonth);
+});
+
+document.getElementById('newMonthBtn').addEventListener('click', async () => {
+  const next = shiftMonth(activeMonth, 1);
+  if (!confirm(`ליצור חודש חדש (${monthLabel(next)})? הת"ז והשמות יועברו, כל שאר הנתונים יתאפסו.`)) return;
+
+  // Carry forward roster only: snapshot current rows' id/name fields, build blank monthly rows.
+  const carrySales = salesRows.filter(r => String(r.empId).trim()).map(r => ({
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    ...blankMonthlyDefaultsFor('sales')
+  }));
+  const carryService = serviceRows.filter(r => String(r.empId).trim()).map(r => ({
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    ...blankMonthlyDefaultsFor('service')
+  }));
+  const carryTnuat = tnuat.getRows().filter(r => String(r.empId).trim()).map(r => ({
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    ...blankMonthlyDefaultsFor('tnuat')
+  }));
+  const carryMeuhedet = meuhedet.getRows().filter(r => String(r.empId).trim()).map(r => ({
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    ...blankMonthlyDefaultsFor('meuhedet')
+  }));
+
+  activeMonth = next;
+  isLoadingMonth = true;
+  salesRows = carrySales.length ? carrySales : [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+  serviceRows = carryService.length ? carryService : [{
+    id: uid(), empId: '', lastName: '', firstName: '',
+    surveyScore: '', workHours: null, attendanceFactor: 0,
+    closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
+  }];
+  tnuat.setRows(carryTnuat.length ? carryTnuat : [makeMovementRow()]);
+  meuhedet.setRows(carryMeuhedet.length ? carryMeuhedet : [makeMovementRow()]);
+  renderSales();
+  renderService();
+  tnuat.render();
+  meuhedet.render();
+  isLoadingMonth = false;
+
+  await populateMonthSelect();
+  document.getElementById('monthSelect').value = activeMonth;
+  await refreshUploadButtons(activeMonth);
+  await scheduleSave();
+});
+
+(async function init() {
+  await populateMonthSelect();
+  await loadMonth(activeMonth);
+})();
+
 </script>
 </body>
 </html>
