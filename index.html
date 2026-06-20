@@ -357,6 +357,8 @@
       <span class="toolbar-label">חודש</span>
       <select id="monthSelect"></select>
       <button id="newMonthBtn">+ חודש חדש</button>
+      <input type="month" id="newMonthTargetInput" style="width:140px;" title="בחר חודש ספציפי ליצירה (לא חייב להיות החודש הבא)" />
+      <button id="newMonthSpecificBtn">צור חודש זה</button>
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
@@ -2114,38 +2116,42 @@ document.getElementById('monthSelect').addEventListener('change', async (e) => {
   await loadMonth(activeMonth);
 });
 
-document.getElementById('newMonthBtn').addEventListener('click', async () => {
-  const next = shiftMonth(activeMonth, 1);
-  if (!confirm(`ליצור חודש חדש (${monthLabel(next)})? הת"ז והשמות יועברו, כל שאר הנתונים יתאפסו.`)) return;
+async function createNewMonth(targetMonth) {
+  if (!confirm(`ליצור חודש ${monthLabel(targetMonth)}? הת"ז והשמות של כל הנציגים הקיימים יועברו, כל שאר הנתונים יתחילו ריקים.`)) return;
 
-  // Carry forward roster only: snapshot current rows' id/name fields, build blank monthly rows.
-  const carrySales = salesRows.filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
-    ...blankMonthlyDefaultsFor('sales')
-  }));
-  const carryService = serviceRows.filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
-    ...blankMonthlyDefaultsFor('service')
-  }));
-  const carryTnuat = tnuat.getRows().filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
-    ...blankMonthlyDefaultsFor('tnuat')
-  }));
-  const carryMeuhedet = meuhedet.getRows().filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
-    ...blankMonthlyDefaultsFor('meuhedet')
-  }));
+  // Pull the full, current roster directly from the database (not just the
+  // currently-loaded month's rows) so the new month gets every agent that
+  // exists anywhere in the system, regardless of which month is active.
+  let allAgents = [];
+  try {
+    const { data, error } = await sb.from('agents').select('*');
+    if (error) throw error;
+    allAgents = (data || []).filter(a => !isDeletedAgent(a.emp_id, a.department));
+  } catch (err) {
+    console.error(err);
+    showBanner('error', 'שגיאה בשליפת רשימת הנציגים. נסה שוב.');
+    return;
+  }
 
-  activeMonth = next;
+  const byDept = { sales: [], service: [], tnuat: [], meuhedet: [] };
+  allAgents.forEach(a => {
+    if (!byDept.hasOwnProperty(a.department)) return;
+    byDept[a.department].push({
+      id: uid(), empId: a.emp_id, firstName: a.first_name || '', lastName: a.last_name || '', phone: a.phone || '',
+      ...blankMonthlyDefaultsFor(a.department)
+    });
+  });
+
+  activeMonth = targetMonth;
   isLoadingMonth = true;
-  salesRows = carrySales.length ? carrySales : [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
-  serviceRows = carryService.length ? carryService : [{
+  salesRows = byDept.sales.length ? byDept.sales : [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
+  serviceRows = byDept.service.length ? byDept.service : [{
     id: uid(), empId: '', lastName: '', firstName: '', phone: '',
     surveyScore: '', workHours: null, attendanceFactor: 0,
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   }];
-  tnuat.setRows(carryTnuat.length ? carryTnuat : [makeMovementRow()]);
-  meuhedet.setRows(carryMeuhedet.length ? carryMeuhedet : [makeMovementRow()]);
+  tnuat.setRows(byDept.tnuat.length ? byDept.tnuat : [makeMovementRow()]);
+  meuhedet.setRows(byDept.meuhedet.length ? byDept.meuhedet : [makeMovementRow()]);
   renderSales();
   renderService();
   tnuat.render();
@@ -2156,6 +2162,20 @@ document.getElementById('newMonthBtn').addEventListener('click', async () => {
   document.getElementById('monthSelect').value = activeMonth;
   await refreshUploadButtons(activeMonth);
   await scheduleSave();
+  showBanner('ok', `חודש ${monthLabel(targetMonth)} נוצר עם ${allAgents.length} נציגים (ללא נתונים חודשיים).`);
+}
+
+document.getElementById('newMonthBtn').addEventListener('click', async () => {
+  await createNewMonth(shiftMonth(activeMonth, 1));
+});
+
+document.getElementById('newMonthSpecificBtn').addEventListener('click', async () => {
+  const val = document.getElementById('newMonthTargetInput').value; // 'YYYY-MM'
+  if (!val) {
+    showBanner('error', 'בחר חודש מהלוח לפני יצירה.');
+    return;
+  }
+  await createNewMonth(val);
 });
 
 document.getElementById('resetAllBtn').addEventListener('click', () => {
