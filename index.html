@@ -6,7 +6,7 @@
 <title>מערכת בונוסים - פריפיט ומובמנט</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   :root {
     --bg: #FAF8F4;
@@ -246,6 +246,86 @@
   }
   #wdHistoryTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   #wdHistoryTable tbody tr.current-month { background: var(--accent-movement-bg); }
+
+  #dashExceptionsTable, #usersTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #dashExceptionsTable thead th, #usersTable thead th {
+    text-align: right; font-weight: 600; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.02em; padding: 9px 10px;
+    border-bottom: 1px solid var(--border-strong); background: #F5F3EE;
+  }
+  #dashExceptionsTable tbody td, #usersTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #dashExceptionsTable tbody tr.exception-zero { background: var(--danger-bg); }
+  .dash-alert {
+    display: flex; align-items: center; gap: 8px; font-size: 13px;
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;
+    background: var(--danger-bg); color: var(--danger-text);
+  }
+
+  .payslip-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+  .payslip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid var(--text);
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+  }
+  .payslip-header h3 { font-size: 20px; font-weight: 700; margin: 0; }
+  .payslip-header .sub { font-size: 13px; color: var(--text-muted); }
+  .payslip-meta-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13.5px;
+    margin-bottom: 4px;
+    color: var(--text-muted);
+  }
+  .payslip-meta-row strong { color: var(--text); font-weight: 600; }
+  .payslip-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 20px 0 8px;
+  }
+  .payslip-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .payslip-metric-row .mname { color: var(--text); }
+  .payslip-metric-row .mval { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .payslip-metric-row .mraw { font-size: 12px; color: var(--text-muted); margin-right: 8px; }
+  .payslip-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 2px solid var(--text);
+  }
+  .payslip-total .label { font-size: 15px; font-weight: 600; }
+  .payslip-total .value { font-size: 30px; font-weight: 700; }
+  .payslip-footer {
+    margin-top: 18px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+  @media print {
+    body * { visibility: hidden; }
+    #payslipCard, #payslipCard * { visibility: visible; }
+    #payslipCard { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; border: none; }
+  }
 </style>
 </head>
 <body>
@@ -259,6 +339,8 @@
     <button class="nav-tab active" id="navCalculator" type="button">מחשבון</button>
     <button class="nav-tab" id="navAgents" type="button">בונוס נציגים</button>
     <button class="nav-tab" id="navWorkDays" type="button">הגדרת ימי עבודה</button>
+    <button class="nav-tab" id="navDashboard" type="button">לוח בקרה</button>
+    <button class="nav-tab" id="navUsers" type="button">ניהול משתמשים</button>
   </div>
 
   <div id="calculatorView">
@@ -292,23 +374,25 @@
   <div class="global-toolbar">
     <div class="toolbar-group">
       <span class="toolbar-label">קבצי דוח משותפים</span>
-      <button id="uploadHoursBtn">שעות עבודה</button>
+      <button id="uploadHoursBtn" title="דוח: דוח נוכחות יומי&#10;עמודות: C=ת&quot;ז, D=שם משפחה, E=שם פרטי, G=מחלקה, S=שעות (נוכח לשכר)">שעות עבודה</button>
       <input type="file" id="hoursInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadCallsBtn">פניות / דיגיטל</button>
+      <button id="uploadCallsBtn" title="עמודות: A=שם מלא, C=ערך (פניות שנסגרו / כמות דיגיטל)">פניות / דיגיטל</button>
       <input type="file" id="callsInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <button id="uploadPhonesBtn" title="דוח: מצבת עובדים עדכני&#10;עמודות: E=ת&quot;ז, H=מספר טלפון">טלפונים (חד פעמי)</button>
+      <input type="file" id="phonesInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
       <span class="toolbar-label">קבצי דוח פריפיט</span>
-      <button id="uploadSurveyBtn">ציון סקרים</button>
+      <button id="uploadSurveyBtn" title="עמודות: A=שם מלא, F=ציון סקר">ציון סקרים</button>
       <input type="file" id="surveyInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
       <span class="toolbar-label">קבצי דוח מובמנט</span>
-      <button id="uploadMvControlBtn">ציון בקרה</button>
+      <button id="uploadMvControlBtn" title="עמודות: A=ת&quot;ז, D=% עמידה בבקרה">ציון בקרה</button>
       <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadMvCallsBtn">שיחות טלפוניות</button>
+      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, D=שיחות נכנסות, F=שיחות יוצאות">שיחות טלפוניות</button>
       <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
@@ -358,6 +442,7 @@
                 <th>מספר ת"ז</th>
                 <th>שם פרטי</th>
                 <th>שם משפחה</th>
+                <th>טלפון</th>
                 <th>מכירות</th>
                 <th>שעות הכשרה</th>
                 <th>שעות עבודה</th>
@@ -404,6 +489,7 @@
                 <th>מספר ת"ז</th>
                 <th>שם משפחה</th>
                 <th>שם פרטי</th>
+                <th>טלפון</th>
                 <th class="col-divider">ציון סקרים (נטען מקובץ)</th>
                 <th>ציון מדד סקרים</th>
                 <th class="col-divider">שעות עבודה</th>
@@ -530,6 +616,11 @@
         <span class="toolbar-label">שם נציג</span>
         <input type="text" id="agentSearchInput" placeholder="הקלד שם לחיפוש…" style="flex:1; min-width:160px;" />
       </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <button id="exportAgentsBtn">ייצוא לאקסל</button>
+        <button class="primary-service" id="sendAllWhatsAppBtn">שלח בונוס לכולם (מסונן)</button>
+      </div>
     </div>
 
     <div class="table-card" style="margin-bottom:20px;">
@@ -558,7 +649,10 @@
           <span class="dot" id="agentDetailDot"></span>
           <h2 id="agentDetailName">—</h2>
         </div>
-        <span class="muted" id="agentDetailMeta" style="font-size:12.5px;"></span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="muted" id="agentDetailMeta" style="font-size:12.5px;"></span>
+          <button class="primary-service" id="sendWhatsAppBtn" style="font-size:12.5px; padding:6px 12px;">שלח בוואטסאפ</button>
+        </div>
       </div>
 
       <div class="table-card" style="padding:18px; margin-bottom:20px;">
@@ -566,9 +660,18 @@
         <canvas id="agentBonusChart" height="90"></canvas>
       </div>
 
-      <div class="table-card" style="padding:18px;">
-        <p class="label" style="font-size:12.5px; color:var(--text-muted); margin:0 0 10px;">פירוט מדדים לפי פעילות</p>
-        <canvas id="agentBreakdownChart" height="110"></canvas>
+      <div class="table-card" style="padding:18px; margin-bottom:20px;">
+        <p class="label" style="font-size:12.5px; color:var(--text-muted); margin:0 0 10px;" id="agentBreakdownTitle">פירוט מדדים - החודש האחרון</p>
+        <canvas id="agentBreakdownChart" height="100"></canvas>
+      </div>
+
+      <div id="payslipWrap" style="margin-bottom:20px;">
+        <div class="dept-toolbar" style="margin-bottom:10px;">
+          <span class="toolbar-label" style="font-size:11.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">כרטיס בונוס להדפסה / שליחה</span>
+          <div class="spacer"></div>
+          <button id="printPayslipBtn">הדפס / שמור כ-PDF</button>
+        </div>
+        <div id="payslipCard" class="payslip-card"></div>
       </div>
     </div>
   </div><!-- /agentsView -->
@@ -606,6 +709,108 @@
       </div>
     </div>
   </div><!-- /workDaysView -->
+
+  <div id="dashboardView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">חודש</span>
+        <select id="dashMonthSelect"></select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">מחלקה</span>
+        <select id="dashDeptSelect">
+          <option value="">הכל</option>
+          <option value="sales">פריפיט - מכירות</option>
+          <option value="service">פריפיט - שירות</option>
+          <option value="tnuat">מובמנט - תנועת</option>
+          <option value="meuhedet">מובמנט - מאוחדת</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="dashBanners"></div>
+
+    <div class="totals" style="margin-bottom:24px;">
+      <div class="stat">
+        <p class="label">סה"כ בונוס (חודש נבחר)</p>
+        <p class="value" id="dashTotalBonus">—</p>
+      </div>
+      <div class="stat">
+        <p class="label">ממוצע בונוס לנציג</p>
+        <p class="value" id="dashAvgBonus">—</p>
+      </div>
+      <div class="stat">
+        <p class="label">חציון בונוס</p>
+        <p class="value" id="dashMedianBonus">—</p>
+      </div>
+      <div class="stat">
+        <p class="label">מספר נציגים עם נתונים</p>
+        <p class="value" id="dashAgentCount">—</p>
+      </div>
+    </div>
+
+    <section class="dept">
+      <div class="dept-header">
+        <div class="dept-title"><h2>חריגים - ציון 0 במדד כלשהו</h2></div>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table id="dashExceptionsTable">
+            <thead>
+              <tr>
+                <th>שם נציג</th>
+                <th>מחלקה</th>
+                <th>מדד חריג</th>
+                <th>ערך</th>
+              </tr>
+            </thead>
+            <tbody id="dashExceptionsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div><!-- /dashboardView -->
+
+  <div id="usersView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">מחלקה</span>
+        <select id="usersDeptSelect">
+          <option value="">הכל</option>
+          <option value="sales">פריפיט - מכירות</option>
+          <option value="service">פריפיט - שירות</option>
+          <option value="tnuat">מובמנט - תנועת</option>
+          <option value="meuhedet">מובמנט - מאוחדת</option>
+        </select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group" style="flex:1;">
+        <span class="toolbar-label">חיפוש</span>
+        <input type="text" id="usersSearchInput" placeholder="שם או ת&quot;ז…" style="flex:1; min-width:160px;" />
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="usersTable">
+          <thead>
+            <tr>
+              <th>ת"ז</th>
+              <th>שם פרטי</th>
+              <th>שם משפחה</th>
+              <th>מחלקה</th>
+              <th>טלפון</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="hint">העברת נציג בין מחלקות יוצרת רישום נפרד במחלקה החדשה (נתוני העבר נשארים במחלקה הישנה). מחיקה כאן היא תמיד מחיקה לצמיתות.</p>
+  </div><!-- /usersView -->
 
 </div>
 
@@ -664,7 +869,7 @@ function getRate(pct) {
   return TIERS[TIERS.length - 1].rate;
 }
 
-let salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+let salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
 let yaad = 1.5;
 
 function confirmRowDelete(empId, dept, doOneTimeDelete, doPermanentDelete) {
@@ -689,7 +894,7 @@ function confirmRowDelete(empId, dept, doOneTimeDelete, doPermanentDelete) {
 }
 
 function addSalesRow() {
-  salesRows.push({ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null });
+  salesRows.push({ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null });
   renderSales();
   scheduleSave();
 }
@@ -730,6 +935,7 @@ function salesRowHTML(r) {
     <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
     <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
     <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
+    <td><input type="text" value="${r.phone || ''}" data-id="${r.id}" data-field="phone" placeholder="050-0000000" dir="ltr" /></td>
     <td><input type="number" value="${r.sales}" data-id="${r.id}" data-field="sales" /></td>
     <td><input type="number" value="${r.trainingHours}" data-id="${r.id}" data-field="trainingHours" /></td>
     <td class="num muted" data-cell="workHours">${r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2)}</td>
@@ -824,14 +1030,14 @@ function pctTierScore5(pct) {
 
 /* ================= PERIPHATE SERVICE ================= */
 let serviceRows = [{
-  id: uid(), empId: '', lastName: '', firstName: '',
+  id: uid(), empId: '', lastName: '', firstName: '', phone: '',
   surveyScore: '', workHours: null, attendanceFactor: 0,
   closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
 }];
 
 function addServiceRow() {
   serviceRows.push({
-    id: uid(), empId: '', lastName: '', firstName: '',
+    id: uid(), empId: '', lastName: '', firstName: '', phone: '',
     surveyScore: '', workHours: null, attendanceFactor: 0,
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   });
@@ -889,6 +1095,7 @@ function serviceRowHTML(r) {
     <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
     <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
     <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
+    <td><input type="text" value="${r.phone || ''}" data-id="${r.id}" data-field="phone" placeholder="050-0000000" dir="ltr" /></td>
     <td class="col-divider num muted" data-cell="surveyScore">${r.surveyScore === '' || r.surveyScore == null ? '—' : fmt(r.surveyScore, 2)}</td>
     <td class="num muted" data-cell="sSurvey"></td>
     <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
@@ -951,7 +1158,7 @@ function renderServiceCalcOnly() {
 /* ================= MOVEMENT (תנועת + מאוחדת) — generic engine ================= */
 function makeMovementRow() {
   return {
-    id: uid(), empId: '', lastName: '', firstName: '',
+    id: uid(), empId: '', lastName: '', firstName: '', phone: '',
     controlScoreRaw: '', // raw % (e.g. 0.8 = 80%), locked from file
     workHours: null, attendanceFactor: 0,
     callsCount: '', // locked from file (incoming+outgoing sum)
@@ -1002,6 +1209,7 @@ function movementRowHTML(r) {
     <td><input type="text" value="${r.empId}" data-id="${r.id}" data-field="empId" placeholder="ת&quot;ז" /></td>
     <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
     <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
+    <td><input type="text" value="${r.phone || ''}" data-id="${r.id}" data-field="phone" placeholder="050-0000000" dir="ltr" /></td>
     <td class="col-divider num muted" data-cell="controlScoreRaw">${r.controlScoreRaw === '' || r.controlScoreRaw == null ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%'}</td>
     <td class="num muted" data-cell="sControl"></td>
     <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
@@ -1028,6 +1236,7 @@ const movementHeaderHTML = `
       <th>מספר ת"ז</th>
       <th>שם משפחה</th>
       <th>שם פרטי</th>
+      <th>טלפון</th>
       <th class="col-divider">% עמידה בקרה (נטען מקובץ)</th>
       <th>ציון מדד בקרות</th>
       <th class="col-divider">שעות עבודה</th>
@@ -1308,10 +1517,10 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
   }
 
   const salesResult = applyToSimpleRows(salesRows, bySales, () => ({
-    id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null
+    id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null
   }));
   const serviceResult = applyToSimpleRows(serviceRows, byService, () => ({
-    id: uid(), empId: '', lastName: '', firstName: '',
+    id: uid(), empId: '', lastName: '', firstName: '', phone: '',
     surveyScore: '', workHours: null, attendanceFactor: 0,
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   }));
@@ -1439,6 +1648,56 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
   scheduleSave();
 });
 
+bindFileButton('uploadPhonesBtn', 'phonesInput', async (data) => {
+  const COL_PHONE_ID = 4;    // E
+  const COL_PHONE_NUM = 7;   // H
+  const phoneByEmpId = {};
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r) continue;
+    const idVal = r[COL_PHONE_ID];
+    const phoneVal = r[COL_PHONE_NUM];
+    if (idVal === null || idVal === undefined || idVal === '') continue;
+    if (phoneVal === null || phoneVal === undefined || phoneVal === '') continue;
+    const key = String(idVal).trim();
+    phoneByEmpId[key] = String(phoneVal).trim();
+  }
+
+  let matchedLocal = 0;
+  [salesRows, serviceRows, tnuat.getRows(), meuhedet.getRows()].forEach(rows => {
+    rows.forEach(r => {
+      const key = String(r.empId).trim();
+      if (key && phoneByEmpId.hasOwnProperty(key)) { r.phone = phoneByEmpId[key]; matchedLocal++; }
+    });
+  });
+  renderSales(); renderService(); tnuat.render(); meuhedet.render();
+
+  // Also update the phone directly in the database for every matching agent,
+  // across all departments and regardless of the currently active month,
+  // since phone is a roster-level field, not month-specific data.
+  let matchedDb = 0, totalAgentsInSystem = 0, stillMissingPhone = 0;
+  try {
+    const { data: allAgents, error } = await sb.from('agents').select('id, emp_id, phone, first_name, last_name, department');
+    if (error) throw error;
+    totalAgentsInSystem = (allAgents || []).length;
+    for (const a of (allAgents || [])) {
+      const key = String(a.emp_id).trim();
+      if (phoneByEmpId.hasOwnProperty(key)) {
+        await sb.from('agents').update({ phone: phoneByEmpId[key] }).eq('id', a.id);
+        matchedDb++;
+      }
+    }
+    const { data: refreshed, error: refErr } = await sb.from('agents').select('phone');
+    if (!refErr) stillMissingPhone = (refreshed || []).filter(a => !a.phone).length;
+  } catch (err) {
+    console.error(err);
+  }
+
+  const foundInFile = Object.keys(phoneByEmpId).length;
+  showBanner('ok', `נמצאו ${foundInFile} ת"ז עם טלפון בקובץ. עודכנו ${matchedDb} מתוך ${totalAgentsInSystem} נציגים במערכת. ${stillMissingPhone > 0 ? `⚠️ ${stillMissingPhone} נציגים עדיין ללא טלפון (ת"ז לא נמצא בקובץ).` : '✓ לכל הנציגים יש טלפון.'}`);
+  scheduleSave();
+});
+
 /* ================= FILE UPLOADS: MOVEMENT ================= */
 bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
   const sums = {};
@@ -1496,7 +1755,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Fields that belong to the agent roster (carry forward between months) vs monthly data (reset each month).
-const ROSTER_FIELDS = ['empId', 'firstName', 'lastName'];
+const ROSTER_FIELDS = ['empId', 'firstName', 'lastName', 'phone'];
 
 function currentMonth() {
   const d = new Date();
@@ -1651,7 +1910,8 @@ async function saveAllToSupabase() {
           agentId = agentRows[0].id;
           await sb.from('agents').update({
             first_name: row.firstName || '',
-            last_name: row.lastName || ''
+            last_name: row.lastName || '',
+            phone: row.phone || ''
           }).eq('id', agentId);
         } else {
           const { data: inserted, error: insErr } = await sb
@@ -1660,6 +1920,7 @@ async function saveAllToSupabase() {
               emp_id: empId,
               first_name: row.firstName || '',
               last_name: row.lastName || '',
+              phone: row.phone || '',
               department: key
             })
             .select('id')
@@ -1713,14 +1974,15 @@ async function loadMonth(month) {
         empId: a.emp_id,
         firstName: a.first_name || '',
         lastName: a.last_name || '',
+        phone: a.phone || '',
         ...monthly
       };
       byDept[a.department].push(row);
     });
 
-    salesRows = byDept.sales.length ? byDept.sales : [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+    salesRows = byDept.sales.length ? byDept.sales : [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
     serviceRows = byDept.service.length ? byDept.service : [{
-      id: uid(), empId: '', lastName: '', firstName: '',
+      id: uid(), empId: '', lastName: '', firstName: '', phone: '',
       surveyScore: '', workHours: null, attendanceFactor: 0,
       closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
     }];
@@ -1812,27 +2074,27 @@ document.getElementById('newMonthBtn').addEventListener('click', async () => {
 
   // Carry forward roster only: snapshot current rows' id/name fields, build blank monthly rows.
   const carrySales = salesRows.filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
     ...blankMonthlyDefaultsFor('sales')
   }));
   const carryService = serviceRows.filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
     ...blankMonthlyDefaultsFor('service')
   }));
   const carryTnuat = tnuat.getRows().filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
     ...blankMonthlyDefaultsFor('tnuat')
   }));
   const carryMeuhedet = meuhedet.getRows().filter(r => String(r.empId).trim()).map(r => ({
-    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName,
+    id: uid(), empId: r.empId, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
     ...blankMonthlyDefaultsFor('meuhedet')
   }));
 
   activeMonth = next;
   isLoadingMonth = true;
-  salesRows = carrySales.length ? carrySales : [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+  salesRows = carrySales.length ? carrySales : [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
   serviceRows = carryService.length ? carryService : [{
-    id: uid(), empId: '', lastName: '', firstName: '',
+    id: uid(), empId: '', lastName: '', firstName: '', phone: '',
     surveyScore: '', workHours: null, attendanceFactor: 0,
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   }];
@@ -1872,9 +2134,9 @@ async function resetAllData() {
     deletedAgentsSet = new Set();
     isLoadingMonth = true;
     activeMonth = currentMonth();
-    salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', sales: '', trainingHours: '', workHours: null }];
+    salesRows = [{ id: uid(), empId: '', firstName: '', lastName: '', phone: '', sales: '', trainingHours: '', workHours: null }];
     serviceRows = [{
-      id: uid(), empId: '', lastName: '', firstName: '',
+      id: uid(), empId: '', lastName: '', firstName: '', phone: '',
       surveyScore: '', workHours: null, attendanceFactor: 0,
       closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
     }];
@@ -1909,17 +2171,23 @@ async function resetAllData() {
 document.getElementById('navCalculator').addEventListener('click', () => switchTab('calculator'));
 document.getElementById('navAgents').addEventListener('click', () => switchTab('agents'));
 document.getElementById('navWorkDays').addEventListener('click', () => switchTab('workdays'));
+document.getElementById('navDashboard').addEventListener('click', () => switchTab('dashboard'));
+document.getElementById('navUsers').addEventListener('click', () => switchTab('users'));
 
 function switchTab(tab) {
   const views = {
     calculator: document.getElementById('calculatorView'),
     agents: document.getElementById('agentsView'),
     workdays: document.getElementById('workDaysView'),
+    dashboard: document.getElementById('dashboardView'),
+    users: document.getElementById('usersView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
     agents: document.getElementById('navAgents'),
     workdays: document.getElementById('navWorkDays'),
+    dashboard: document.getElementById('navDashboard'),
+    users: document.getElementById('navUsers'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -1927,6 +2195,8 @@ function switchTab(tab) {
   });
   if (tab === 'agents') initAgentsTabIfNeeded();
   if (tab === 'workdays') initWorkDaysTabIfNeeded();
+  if (tab === 'dashboard') initDashboardTabIfNeeded();
+  if (tab === 'users') initUsersTabIfNeeded();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -1944,6 +2214,8 @@ let agentsTabLoaded = false;
 let selectedAgent = null; // { id, empId, firstName, lastName, department }
 let bonusChartInstance = null;
 let breakdownChartInstance = null;
+let lastAgentPoint = null;
+let lastFilteredAgentRows = [];
 
 function computeBonusForRow(dept, row, workDaysOverride) {
   if (dept === 'sales') {
@@ -1954,6 +2226,12 @@ function computeBonusForRow(dept, row, workDaysOverride) {
       components: {
         '% עמידה ביעד': (c.pctTarget || 0) * 100,
         'פריון לשעה': c.productivity || 0,
+      },
+      raw: {
+        'מכירות': Number(row.sales) || 0,
+        'שעות עבודה': Number(row.workHours) || 0,
+        'פריון לשעה': c.productivity || 0,
+        'עמלה למכירה': c.rate || 0,
       }
     };
   }
@@ -1966,6 +2244,12 @@ function computeBonusForRow(dept, row, workDaysOverride) {
         'סקרים': c.sSurvey * 100,
         'נוכחות': c.sAttendance * 100,
         'פניות לשעה': c.sCalls * 100,
+      },
+      raw: {
+        'ציון סקרים': row.surveyScore === '' || row.surveyScore == null ? null : Number(row.surveyScore),
+        'שעות עבודה': Number(row.workHours) || 0,
+        '% נוכחות': c.attendancePct * 100,
+        'ממוצע פניות לשעה': c.avgCallsPerHour || 0,
       }
     };
   }
@@ -1977,7 +2261,14 @@ function computeBonusForRow(dept, row, workDaysOverride) {
   };
   if (c.hasCalls) components['שיחות'] = c.sCalls * 100;
   if (c.hasDigital) components['דיגיטל'] = c.sDigital * 100;
-  return { total: c.totalBonus, perHour: c.bonusPerHour, components };
+  const raw = {
+    '% עמידה בקרה': (Number(row.controlScoreRaw) || 0) * 100,
+    'שעות עבודה': Number(row.workHours) || 0,
+    '% נוכחות': c.attendancePct * 100,
+  };
+  if (c.hasCalls) raw['שיחות לשעה'] = c.callsPerHour || 0;
+  if (c.hasDigital) raw['דיגיטל לשעה'] = c.digitalPerHour || 0;
+  return { total: c.totalBonus, perHour: c.bonusPerHour, components, raw };
 }
 
 async function initAgentsTabIfNeeded() {
@@ -2035,16 +2326,21 @@ async function refreshAgentsSummary() {
         const monthly = recordByAgentId[a.id];
         const fullName = normalizeName(`${a.first_name || ''} ${a.last_name || ''}`);
         let bonus = null;
+        let point = null;
         if (monthly) {
           const row = { empId: a.emp_id, firstName: a.first_name, lastName: a.last_name, ...monthly };
-          bonus = computeBonusForRow(a.department, row, monthWd).total;
+          const c = computeBonusForRow(a.department, row, monthWd);
+          bonus = c.total;
+          point = { month: monthFilter, label: monthLabel(monthFilter), total: c.total, perHour: c.perHour, components: c.components, raw: c.raw };
         }
-        return { agent: a, fullName, bonus };
+        return { agent: a, fullName, bonus, point };
       });
 
     if (nameFilter) {
       rows = rows.filter(r => r.fullName.toLowerCase().includes(nameFilter));
     }
+
+    lastFilteredAgentRows = rows;
 
     tbody.innerHTML = '';
     if (rows.length === 0) {
@@ -2095,6 +2391,10 @@ async function selectAgent(agent) {
 }
 
 async function renderAgentCharts(agent) {
+  if (typeof Chart === 'undefined') {
+    showBanner('error', 'ספריית הגרפים לא נטענה (בעיית רשת או חסימת תוכן). רענן את הדף ונסה שוב.');
+    return;
+  }
   try {
     const { data: records, error } = await sb
       .from('monthly_records')
@@ -2110,7 +2410,7 @@ async function renderAgentCharts(agent) {
       const row = { empId: agent.emp_id, firstName: agent.first_name, lastName: agent.last_name, ...(r.data || {}) };
       const monthWd = monthWorkDaysCache[r.month];
       const c = computeBonusForRow(agent.department, row, monthWd);
-      return { month: r.month, label: monthLabel(r.month), total: c.total, perHour: c.perHour, components: c.components };
+      return { month: r.month, label: monthLabel(r.month), total: c.total, perHour: c.perHour, components: c.components, raw: c.raw };
     });
 
     const labels = points.map(p => p.label);
@@ -2150,42 +2450,253 @@ async function renderAgentCharts(agent) {
 
     if (breakdownChartInstance) breakdownChartInstance.destroy();
     const breakdownCtx = document.getElementById('agentBreakdownChart').getContext('2d');
-    const allComponentKeys = [...new Set(points.flatMap(p => Object.keys(p.components)))];
-    const palette = ['#1F6B5C', '#B5601F', '#2D5C8A', '#A33B2A', '#7A4115'];
     const isSales = agent.department === 'sales';
-    const breakdownDatasets = allComponentKeys.map((key, idx) => {
-      const ds = {
-        label: key,
-        data: points.map(p => p.components[key] !== undefined ? p.components[key] : null),
-        borderColor: palette[idx % palette.length],
-        backgroundColor: palette[idx % palette.length],
-        tension: 0.3,
-        spanGaps: true,
-      };
-      if (isSales && key === 'פריון לשעה') ds.yAxisID = 'yRate';
-      return ds;
-    });
-    const breakdownScales = isSales
-      ? {
-          y: { beginAtZero: true, title: { display: true, text: '% עמידה ביעד' } },
-          yRate: { beginAtZero: true, position: 'right', title: { display: true, text: 'פריון לשעה' }, grid: { drawOnChartArea: false } },
+    const latestPoint = points.length ? points[points.length - 1] : null;
+    lastAgentPoint = latestPoint;
+    document.getElementById('agentBreakdownTitle').textContent = latestPoint
+      ? `פירוט מדדים - ${latestPoint.label}`
+      : 'פירוט מדדים - אין נתונים';
+
+    if (latestPoint) {
+      const compEntries = Object.entries(latestPoint.components);
+      const palette = ['#1F6B5C', '#B5601F', '#2D5C8A', '#A33B2A', '#7A4115'];
+      const isRateLike = (key) => isSales && key === 'פריון לשעה';
+
+      breakdownChartInstance = new Chart(breakdownCtx, {
+        type: 'bar',
+        data: {
+          labels: compEntries.map(([k]) => k),
+          datasets: [{
+            label: latestPoint.label,
+            data: compEntries.map(([k, v]) => v),
+            backgroundColor: compEntries.map(([k], idx) => palette[idx % palette.length]),
+            borderRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: isSales ? '% / ערך' : '%' } },
+          }
         }
-      : {
-          y: { beginAtZero: true, max: 120, title: { display: true, text: '% מדד' } },
-        };
-    breakdownChartInstance = new Chart(breakdownCtx, {
-      type: 'line',
-      data: { labels, datasets: breakdownDatasets },
-      options: {
-        responsive: true,
-        interaction: { mode: 'index', intersect: false },
-        scales: breakdownScales
-      }
-    });
+      });
+    } else {
+      breakdownChartInstance = null;
+    }
+
+    renderPayslipCard(agent, latestPoint);
   } catch (err) {
     console.error(err);
     showBanner('error', 'שגיאה בטעינת מגמת הנציג.');
   }
+}
+
+function renderPayslipCard(agent, point) {
+  const card = document.getElementById('payslipCard');
+  if (!point) {
+    card.innerHTML = '<p class="muted" style="text-align:center; padding:30px 0;">אין נתונים עדיין לנציג זה.</p>';
+    return;
+  }
+  const fullName = normalizeName(`${agent.first_name || ''} ${agent.last_name || ''}`) || '(ללא שם)';
+  const deptLabel = DEPT_LABELS[agent.department] || agent.department;
+
+  const metricRowsHtml = Object.entries(point.components).map(([key, val]) => {
+    const rawVal = point.raw && point.raw.hasOwnProperty(key) ? point.raw[key] : undefined;
+    const isPercentLike = !(agent.department === 'sales' && key === 'פריון לשעה');
+    const displayVal = isPercentLike ? `${fmt(val, 1)}%` : fmt(val, 2);
+    return `
+      <div class="payslip-metric-row">
+        <span class="mname">${key}</span>
+        <span><span class="mval">${displayVal}</span></span>
+      </div>
+    `;
+  }).join('');
+
+  const rawRowsHtml = point.raw ? Object.entries(point.raw).map(([key, val]) => {
+    const display = (val === null || val === undefined) ? '—' : fmt(val, 2);
+    return `
+      <div class="payslip-metric-row">
+        <span class="mname">${key}</span>
+        <span class="mval">${display}</span>
+      </div>
+    `;
+  }).join('') : '';
+
+  card.innerHTML = `
+    <div class="payslip-header">
+      <h3>${fullName}</h3>
+      <span class="sub">${deptLabel}</span>
+    </div>
+    <div class="payslip-meta-row"><span>חודש</span><strong>${point.label}</strong></div>
+    <div class="payslip-meta-row"><span>ת"ז</span><strong>${agent.emp_id}</strong></div>
+
+    <p class="payslip-section-title">ציוני מדדים</p>
+    ${metricRowsHtml}
+
+    ${rawRowsHtml ? `<p class="payslip-section-title">נתוני בסיס</p>${rawRowsHtml}` : ''}
+
+    <div class="payslip-total">
+      <span class="label">סה"כ בונוס</span>
+      <span class="value">${fmt(point.total, 0)} ₪</span>
+    </div>
+    <p class="payslip-footer">הופק אוטומטית ממערכת הבונוסים · ${new Date().toLocaleDateString('he-IL')}</p>
+  `;
+}
+
+document.getElementById('printPayslipBtn').addEventListener('click', () => {
+  window.print();
+});
+
+/* ================= WHATSAPP BOT INTEGRATION ================= */
+const WHATSAPP_API_URL = 'https://whatsapp-bot-production-120a.up.railway.app/api/send';
+
+function buildWhatsAppMessage(agent, point) {
+  const fullName = normalizeName(`${agent.first_name || ''} ${agent.last_name || ''}`) || 'נציג/ה יקר/ה';
+  const deptLabel = DEPT_LABELS[agent.department] || agent.department;
+  if (!point) {
+    return `שלום ${fullName},\nטרם נמצאו נתוני בונוס עבורך החודש.`;
+  }
+  const lines = [];
+  lines.push(`שלום ${fullName},`);
+  lines.push(`להלן סיכום הבונוס שלך עבור ${point.label} (${deptLabel}):`);
+  lines.push('');
+  lines.push('ציוני מדדים:');
+  Object.entries(point.components).forEach(([key, val]) => {
+    const isPercentLike = !(agent.department === 'sales' && key === 'פריון לשעה');
+    const displayVal = isPercentLike ? `${fmt(val, 1)}%` : fmt(val, 2);
+    lines.push(`• ${key}: ${displayVal}`);
+  });
+  if (point.raw) {
+    lines.push('');
+    lines.push('נתוני בסיס:');
+    Object.entries(point.raw).forEach(([key, val]) => {
+      const display = (val === null || val === undefined) ? '—' : fmt(val, 2);
+      lines.push(`• ${key}: ${display}`);
+    });
+  }
+  lines.push('');
+  lines.push(`סה"כ בונוס: ${fmt(point.total, 0)} ₪`);
+  lines.push('');
+  lines.push('בברכה, מערכת הבונוסים');
+  return lines.join('\n');
+}
+
+function normalizePhoneForWhatsApp(phone) {
+  if (!phone) return null;
+  let digits = String(phone).replace(/[^\d]/g, '');
+  if (digits.startsWith('0')) digits = '972' + digits.slice(1);
+  else if (!digits.startsWith('972')) digits = '972' + digits;
+  return digits;
+}
+
+async function sendWhatsAppMessage(phone, message) {
+  const normalized = normalizePhoneForWhatsApp(phone);
+  if (!normalized) return { ok: false, reason: 'no-phone' };
+  try {
+    const res = await fetch(WHATSAPP_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalized, message })
+    });
+    if (!res.ok) return { ok: false, reason: `http-${res.status}` };
+    return { ok: true };
+  } catch (err) {
+    console.error(err);
+    return { ok: false, reason: 'network' };
+  }
+}
+
+document.getElementById('sendWhatsAppBtn').addEventListener('click', async () => {
+  if (!selectedAgent || !lastAgentPoint) {
+    showBanner('error', 'בחר נציג עם נתונים לפני שליחה.');
+    return;
+  }
+  if (!selectedAgent.phone) {
+    showBanner('error', 'לא הוגדר מספר טלפון לנציג זה. הטען קובץ טלפונים או הזן ידנית.');
+    return;
+  }
+  const btn = document.getElementById('sendWhatsAppBtn');
+  btn.disabled = true;
+  btn.textContent = 'שולח…';
+  const message = buildWhatsAppMessage(selectedAgent, lastAgentPoint);
+  const result = await sendWhatsAppMessage(selectedAgent.phone, message);
+  btn.disabled = false;
+  btn.textContent = 'שלח בוואטסאפ';
+  if (result.ok) {
+    showBanner('ok', `ההודעה נשלחה בהצלחה ל-${normalizeName(selectedAgent.first_name + ' ' + selectedAgent.last_name)}.`);
+  } else {
+    showBanner('error', `שליחת ההודעה נכשלה (${result.reason}). ודא שהבוט פעיל ושמספר הטלפון תקין.`);
+  }
+});
+
+document.getElementById('exportAgentsBtn').addEventListener('click', () => {
+  if (lastFilteredAgentRows.length === 0) {
+    showBanner('error', 'אין נתונים לייצוא עם הסינון הנוכחי.');
+    return;
+  }
+  const monthFilter = document.getElementById('agentFilterMonth').value || currentMonth();
+
+  const exportRows = lastFilteredAgentRows.map(({ agent, fullName, point }) => {
+    const base = {
+      'ת"ז': agent.emp_id,
+      'שם פרטי': agent.first_name || '',
+      'שם משפחה': agent.last_name || '',
+      'מחלקה': DEPT_LABELS[agent.department] || agent.department,
+      'חודש': monthLabel(monthFilter),
+      'טלפון': agent.phone || '',
+      'סה"כ בונוס': point ? Math.round(point.total) : null,
+    };
+    if (point) {
+      Object.entries(point.components).forEach(([key, val]) => {
+        base[key] = Math.round(val * 100) / 100;
+      });
+    }
+    return base;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'בונוס נציגים');
+  const filename = `בונוס_נציגים_${monthFilter}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showBanner('ok', `הקובץ ${filename} הורד עם ${exportRows.length} שורות.`);
+});
+
+document.getElementById('sendAllWhatsAppBtn').addEventListener('click', () => {
+  const withPhone = lastFilteredAgentRows.filter(r => r.point && r.agent.phone);
+  const withoutData = lastFilteredAgentRows.filter(r => !r.point);
+  const withoutPhone = lastFilteredAgentRows.filter(r => r.point && !r.agent.phone);
+
+  if (withPhone.length === 0) {
+    showBanner('error', 'אין נציגים עם גם נתוני בונוס וגם מספר טלפון ברשימה המסוננת הנוכחית.');
+    return;
+  }
+
+  showModal(
+    'שליחת בונוס בוואטסאפ לכולם',
+    `יישלחו הודעות ל-${withPhone.length} נציגים (לפי הסינון הנוכחי). ${withoutPhone.length ? withoutPhone.length + ' נציגים ללא מספר טלפון יידלגו. ' : ''}${withoutData.length ? withoutData.length + ' נציגים ללא נתוני בונוס לחודש זה יידלגו. ' : ''}להמשיך?`,
+    [
+      { label: 'ביטול', style: { background: 'var(--surface)' } },
+      { label: `שלח ל-${withPhone.length} נציגים`, style: { background: 'var(--accent-service)', color: '#fff', borderColor: 'var(--accent-service)' }, onClick: () => runBulkWhatsAppSend(withPhone) },
+    ]
+  );
+});
+
+async function runBulkWhatsAppSend(targets) {
+  const btn = document.getElementById('sendAllWhatsAppBtn');
+  btn.disabled = true;
+  let sent = 0, failed = 0;
+  for (let i = 0; i < targets.length; i++) {
+    const { agent, point } = targets[i];
+    btn.textContent = `שולח… (${i + 1}/${targets.length})`;
+    const message = buildWhatsAppMessage(agent, point);
+    const result = await sendWhatsAppMessage(agent.phone, message);
+    if (result.ok) sent++; else failed++;
+  }
+  btn.disabled = false;
+  btn.textContent = 'שלח בונוס לכולם (מסונן)';
+  showBanner(failed === 0 ? 'ok' : 'error', `נשלחו ${sent} הודעות בהצלחה. ${failed ? failed + ' נכשלו.' : ''}`);
 }
 
 /* ================= WORK DAYS SETTINGS TAB ================= */
@@ -2284,6 +2795,209 @@ async function refreshWdHistory() {
   } catch (err) {
     console.error(err);
     tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
+  }
+}
+
+
+/* ================= MANAGER DASHBOARD ================= */
+async function initDashboardTabIfNeeded() {
+  await populateDashMonthSelect();
+  await refreshDashboard();
+}
+
+async function populateDashMonthSelect() {
+  const sel = document.getElementById('dashMonthSelect');
+  const prevVal = sel.value;
+  sel.innerHTML = '';
+  let months = new Set([currentMonth()]);
+  try {
+    const { data, error } = await sb.from('monthly_records').select('month');
+    if (!error && data) data.forEach(r => months.add(r.month));
+  } catch (err) { console.error(err); }
+  const sorted = [...months].sort().reverse();
+  sorted.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m === currentMonth() ? `${monthLabel(m)} (נוכחי)` : monthLabel(m);
+    sel.appendChild(opt);
+  });
+  sel.value = prevVal && months.has(prevVal) ? prevVal : activeMonth;
+}
+
+document.getElementById('dashMonthSelect').addEventListener('change', refreshDashboard);
+document.getElementById('dashDeptSelect').addEventListener('change', refreshDashboard);
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+async function refreshDashboard() {
+  const monthFilter = document.getElementById('dashMonthSelect').value || currentMonth();
+  const deptFilter = document.getElementById('dashDeptSelect').value;
+  const banners = document.getElementById('dashBanners');
+  const exTbody = document.getElementById('dashExceptionsTbody');
+  banners.innerHTML = '';
+  exTbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+
+  try {
+    let query = sb.from('agents').select('*');
+    if (deptFilter) query = query.eq('department', deptFilter);
+    const { data: agents, error: agentsErr } = await query;
+    if (agentsErr) throw agentsErr;
+
+    const liveAgents = (agents || []).filter(a => !isDeletedAgent(a.emp_id, a.department));
+
+    const { data: records, error: recErr } = await sb
+      .from('monthly_records')
+      .select('agent_id, data')
+      .eq('month', monthFilter);
+    if (recErr) throw recErr;
+
+    const recordByAgentId = {};
+    (records || []).forEach(r => { recordByAgentId[r.agent_id] = r.data || {}; });
+
+    const monthWd = await loadMonthWorkDays(monthFilter);
+
+    const bonuses = [];
+    const exceptions = [];
+    let missingHours = 0;
+
+    liveAgents.forEach(a => {
+      const monthly = recordByAgentId[a.id];
+      const fullName = normalizeName(`${a.first_name || ''} ${a.last_name || ''}`) || '(ללא שם)';
+      if (!monthly) {
+        missingHours++;
+        return;
+      }
+      const row = { empId: a.emp_id, firstName: a.first_name, lastName: a.last_name, ...monthly };
+      const hasHours = row.workHours !== null && row.workHours !== undefined && Number(row.workHours) > 0;
+      if (!hasHours) missingHours++;
+
+      const c = computeBonusForRow(a.department, row, monthWd);
+      bonuses.push(c.total);
+
+      Object.entries(c.components).forEach(([key, val]) => {
+        const isPercentLike = !(a.department === 'sales' && key === 'פריון לשעה');
+        if (isPercentLike && val === 0) {
+          exceptions.push({ fullName, dept: a.department, metric: key, val });
+        }
+      });
+    });
+
+    document.getElementById('dashTotalBonus').textContent = bonuses.length ? fmt(bonuses.reduce((s, v) => s + v, 0), 0) + ' ₪' : '—';
+    document.getElementById('dashAvgBonus').textContent = bonuses.length ? fmt(bonuses.reduce((s, v) => s + v, 0) / bonuses.length, 0) + ' ₪' : '—';
+    const med = median(bonuses);
+    document.getElementById('dashMedianBonus').textContent = med !== null ? fmt(med, 0) + ' ₪' : '—';
+    document.getElementById('dashAgentCount').textContent = bonuses.length;
+
+    if (missingHours > 0) {
+      banners.innerHTML = `<div class="dash-alert">⚠️ ${missingHours} נציגים עדיין ללא שעות עבודה (או ללא נתונים בכלל) לחודש ${monthLabel(monthFilter)}.</div>`;
+    }
+
+    exTbody.innerHTML = '';
+    if (exceptions.length === 0) {
+      exTbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">אין חריגים החודש.</td></tr>';
+    } else {
+      exceptions.forEach(ex => {
+        const tr = document.createElement('tr');
+        tr.classList.add('exception-zero');
+        tr.innerHTML = `
+          <td>${ex.fullName}</td>
+          <td>${DEPT_LABELS[ex.dept] || ex.dept}</td>
+          <td>${ex.metric}</td>
+          <td class="num">0%</td>
+        `;
+        exTbody.appendChild(tr);
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    exTbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
+  }
+}
+
+/* ================= USER MANAGEMENT ================= */
+async function initUsersTabIfNeeded() {
+  await refreshUsersTable();
+}
+
+document.getElementById('usersDeptSelect').addEventListener('change', refreshUsersTable);
+document.getElementById('usersSearchInput').addEventListener('input', () => {
+  clearTimeout(window.__usersSearchTimer);
+  window.__usersSearchTimer = setTimeout(refreshUsersTable, 250);
+});
+
+async function refreshUsersTable() {
+  const deptFilter = document.getElementById('usersDeptSelect').value;
+  const search = normalizeName(document.getElementById('usersSearchInput').value).toLowerCase();
+  const tbody = document.getElementById('usersTbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+
+  try {
+    let query = sb.from('agents').select('*');
+    if (deptFilter) query = query.eq('department', deptFilter);
+    const { data: agents, error } = await query;
+    if (error) throw error;
+
+    let rows = (agents || []).filter(a => !isDeletedAgent(a.emp_id, a.department));
+    if (search) {
+      rows = rows.filter(a => {
+        const full = normalizeName(`${a.first_name || ''} ${a.last_name || ''}`).toLowerCase();
+        return full.includes(search) || String(a.emp_id).includes(search);
+      });
+    }
+    rows.sort((a, b) => normalizeName(`${a.first_name} ${a.last_name}`).localeCompare(normalizeName(`${b.first_name} ${b.last_name}`), 'he'));
+
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px; text-align:center;">לא נמצאו נציגים.</td></tr>';
+      return;
+    }
+    rows.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${a.emp_id}</td>
+        <td>${a.first_name || ''}</td>
+        <td>${a.last_name || ''}</td>
+        <td>${DEPT_LABELS[a.department] || a.department}</td>
+        <td dir="ltr" style="text-align:right; ${a.phone ? '' : 'color: var(--danger-text); font-weight:600;'}">${a.phone || 'חסר טלפון'}</td>
+        <td><button class="icon-btn" data-delete-agent="${a.id}" data-emp-id="${a.emp_id}" data-dept="${a.department}" aria-label="מחק לצמיתות">✕</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tbody.querySelectorAll('[data-delete-agent]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const empId = btn.dataset.empId;
+        const dept = btn.dataset.dept;
+        showModal(
+          `מחיקת נציג לצמיתות`,
+          `ת"ז ${empId} (${DEPT_LABELS[dept] || dept}) יוסר לצמיתות מהמערכת, מכל החודשים, ולא ייווצר מחדש גם מקבצים עתידיים. הפעולה אינה הפיכה. להמשיך?`,
+          [
+            { label: 'ביטול', style: { background: 'var(--surface)' } },
+            { label: 'מחק לצמיתות', style: { background: '#C0392B', color: '#fff', borderColor: '#C0392B' }, onClick: async () => {
+                try {
+                  await sb.from('deleted_agents').upsert({ emp_id: empId, department: dept }, { onConflict: 'emp_id,department' });
+                  await deleteAgentFromDb(empId, dept);
+                  await loadDeletedAgents();
+                  showBanner('ok', `ת"ז ${empId} הוסר לצמיתות.`);
+                  await refreshUsersTable();
+                } catch (err) {
+                  console.error(err);
+                  showBanner('error', 'שגיאה במחיקה.');
+                }
+              }
+            },
+          ]
+        );
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
   }
 }
 
