@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>מערכת בונוסים - פריפיט ומובמנט</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -247,14 +248,19 @@
   #wdHistoryTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   #wdHistoryTable tbody tr.current-month { background: var(--accent-movement-bg); }
 
-  #dashExceptionsTable, #usersTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  #dashExceptionsTable thead th, #usersTable thead th {
+  #dashExceptionsTable, #usersTable, #msgTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #dashExceptionsTable thead th, #usersTable thead th, #msgTable thead th {
     text-align: right; font-weight: 600; font-size: 11px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.02em; padding: 9px 10px;
     border-bottom: 1px solid var(--border-strong); background: #F5F3EE;
   }
-  #dashExceptionsTable tbody td, #usersTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #dashExceptionsTable tbody td, #usersTable tbody td, #msgTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   #dashExceptionsTable tbody tr.exception-zero { background: var(--danger-bg); }
+  .msg-status-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  }
+  .msg-status-badge.sent { background: var(--success-bg); color: var(--success-text); }
+  .msg-status-badge.failed { background: var(--danger-bg); color: var(--danger-text); }
   .dash-alert {
     display: flex; align-items: center; gap: 8px; font-size: 13px;
     padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;
@@ -341,6 +347,7 @@
     <button class="nav-tab" id="navWorkDays" type="button">הגדרת ימי עבודה</button>
     <button class="nav-tab" id="navDashboard" type="button">לוח בקרה</button>
     <button class="nav-tab" id="navUsers" type="button">ניהול משתמשים</button>
+    <button class="nav-tab" id="navMessages" type="button">היסטוריית הודעות</button>
   </div>
 
   <div id="calculatorView">
@@ -805,6 +812,51 @@
 
     <p class="hint">העברת נציג בין מחלקות יוצרת רישום נפרד במחלקה החדשה (נתוני העבר נשארים במחלקה הישנה). מחיקה כאן היא תמיד מחיקה לצמיתות.</p>
   </div><!-- /usersView -->
+
+  <div id="messagesView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">חודש</span>
+        <select id="msgMonthSelect">
+          <option value="">הכל</option>
+        </select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">סטטוס</span>
+        <select id="msgStatusSelect">
+          <option value="">הכל</option>
+          <option value="sent">נשלח בהצלחה</option>
+          <option value="failed">נכשל</option>
+        </select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group" style="flex:1;">
+        <span class="toolbar-label">חיפוש</span>
+        <input type="text" id="msgSearchInput" placeholder="שם או ת&quot;ז…" style="flex:1; min-width:160px;" />
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="msgTable">
+          <thead>
+            <tr>
+              <th>תאריך ושעה</th>
+              <th>שם נציג</th>
+              <th>ת"ז</th>
+              <th>מחלקה</th>
+              <th>חודש</th>
+              <th>טלפון</th>
+              <th>סטטוס</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="msgTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /messagesView -->
 
 </div>
 
@@ -2167,6 +2219,7 @@ document.getElementById('navAgents').addEventListener('click', () => switchTab('
 document.getElementById('navWorkDays').addEventListener('click', () => switchTab('workdays'));
 document.getElementById('navDashboard').addEventListener('click', () => switchTab('dashboard'));
 document.getElementById('navUsers').addEventListener('click', () => switchTab('users'));
+document.getElementById('navMessages').addEventListener('click', () => switchTab('messages'));
 
 function switchTab(tab) {
   const views = {
@@ -2175,6 +2228,7 @@ function switchTab(tab) {
     workdays: document.getElementById('workDaysView'),
     dashboard: document.getElementById('dashboardView'),
     users: document.getElementById('usersView'),
+    messages: document.getElementById('messagesView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -2182,6 +2236,7 @@ function switchTab(tab) {
     workdays: document.getElementById('navWorkDays'),
     dashboard: document.getElementById('navDashboard'),
     users: document.getElementById('navUsers'),
+    messages: document.getElementById('navMessages'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -2191,6 +2246,7 @@ function switchTab(tab) {
   if (tab === 'workdays') initWorkDaysTabIfNeeded();
   if (tab === 'dashboard') initDashboardTabIfNeeded();
   if (tab === 'users') initUsersTabIfNeeded();
+  if (tab === 'messages') initMessagesTabIfNeeded();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -2363,7 +2419,10 @@ async function refreshAgentsSummary() {
 }
 
 document.getElementById('agentFilterDept').addEventListener('change', refreshAgentsSummary);
-document.getElementById('agentFilterMonth').addEventListener('change', refreshAgentsSummary);
+document.getElementById('agentFilterMonth').addEventListener('change', async () => {
+  await refreshAgentsSummary();
+  if (selectedAgent) await renderAgentCharts(selectedAgent);
+});
 document.getElementById('agentSearchInput').addEventListener('input', () => {
   clearTimeout(window._agentSearchDebounce);
   window._agentSearchDebounce = setTimeout(refreshAgentsSummary, 250);
@@ -2445,14 +2504,22 @@ async function renderAgentCharts(agent) {
     if (breakdownChartInstance) breakdownChartInstance.destroy();
     const breakdownCtx = document.getElementById('agentBreakdownChart').getContext('2d');
     const isSales = agent.department === 'sales';
-    const latestPoint = points.length ? points[points.length - 1] : null;
-    lastAgentPoint = latestPoint;
-    document.getElementById('agentBreakdownTitle').textContent = latestPoint
-      ? `פירוט מדדים - ${latestPoint.label}`
+
+    const filterMonth = document.getElementById('agentFilterMonth').value || currentMonth();
+    let selectedPoint = points.find(p => p.month === filterMonth) || null;
+    let usingFallback = false;
+    if (!selectedPoint && points.length) {
+      selectedPoint = points[points.length - 1];
+      usingFallback = true;
+    }
+    lastAgentPoint = selectedPoint;
+
+    document.getElementById('agentBreakdownTitle').textContent = selectedPoint
+      ? `פירוט מדדים - ${selectedPoint.label}${usingFallback ? ' (אין נתונים לחודש המסונן, מוצג החודש האחרון הזמין)' : ''}`
       : 'פירוט מדדים - אין נתונים';
 
-    if (latestPoint) {
-      const compEntries = Object.entries(latestPoint.components);
+    if (selectedPoint) {
+      const compEntries = Object.entries(selectedPoint.components);
       const palette = ['#1F6B5C', '#B5601F', '#2D5C8A', '#A33B2A', '#7A4115'];
       const isRateLike = (key) => isSales && key === 'פריון לשעה';
 
@@ -2461,7 +2528,7 @@ async function renderAgentCharts(agent) {
         data: {
           labels: compEntries.map(([k]) => k),
           datasets: [{
-            label: latestPoint.label,
+            label: selectedPoint.label,
             data: compEntries.map(([k, v]) => v),
             backgroundColor: compEntries.map(([k], idx) => palette[idx % palette.length]),
             borderRadius: 6,
@@ -2479,7 +2546,7 @@ async function renderAgentCharts(agent) {
       breakdownChartInstance = null;
     }
 
-    renderPayslipCard(agent, latestPoint);
+    renderPayslipCard(agent, selectedPoint);
   } catch (err) {
     console.error(err);
     showBanner('error', 'שגיאה בטעינת מגמת הנציג.');
@@ -2609,6 +2676,24 @@ async function sendWhatsAppMessage(phone, message) {
   }
 }
 
+async function logMessage(agent, point, message, result) {
+  try {
+    await sb.from('message_log').insert({
+      agent_id: agent.id || null,
+      emp_id: agent.emp_id,
+      full_name: normalizeName(`${agent.first_name || ''} ${agent.last_name || ''}`),
+      department: agent.department,
+      phone: agent.phone || '',
+      month: point ? point.month : null,
+      message: message,
+      status: result.ok ? 'sent' : 'failed',
+      error_detail: result.ok ? null : `${result.reason || ''}${result.detail ? ' - ' + result.detail : ''}`,
+    });
+  } catch (err) {
+    console.error('Failed to log message:', err);
+  }
+}
+
 document.getElementById('sendWhatsAppBtn').addEventListener('click', async () => {
   if (!selectedAgent || !lastAgentPoint) {
     showBanner('error', 'בחר נציג עם נתונים לפני שליחה.');
@@ -2623,6 +2708,7 @@ document.getElementById('sendWhatsAppBtn').addEventListener('click', async () =>
   btn.textContent = 'שולח…';
   const message = buildWhatsAppMessage(selectedAgent, lastAgentPoint);
   const result = await sendWhatsAppMessage(selectedAgent.phone, message);
+  await logMessage(selectedAgent, lastAgentPoint, message, result);
   btn.disabled = false;
   btn.textContent = 'שלח בוואטסאפ';
   if (result.ok) {
@@ -2672,18 +2758,20 @@ document.getElementById('sendAllWhatsAppBtn').addEventListener('click', () => {
   const withPhone = lastFilteredAgentRows.filter(r => r.point && r.agent.phone);
   const withoutData = lastFilteredAgentRows.filter(r => !r.point);
   const withoutPhone = lastFilteredAgentRows.filter(r => r.point && !r.agent.phone);
+  const monthFilter = document.getElementById('agentFilterMonth').value || currentMonth();
+  const monthDisplay = monthLabel(monthFilter);
 
   if (withPhone.length === 0) {
-    showBanner('error', 'אין נציגים עם גם נתוני בונוס וגם מספר טלפון ברשימה המסוננת הנוכחית.');
+    showBanner('error', `אין נציגים עם גם נתוני בונוס וגם מספר טלפון לחודש ${monthDisplay} ברשימה המסוננת הנוכחית.`);
     return;
   }
 
   showModal(
-    'שליחת בונוס בוואטסאפ לכולם',
-    `יישלחו הודעות ל-${withPhone.length} נציגים (לפי הסינון הנוכחי). ${withoutPhone.length ? withoutPhone.length + ' נציגים ללא מספר טלפון יידלגו. ' : ''}${withoutData.length ? withoutData.length + ' נציגים ללא נתוני בונוס לחודש זה יידלגו. ' : ''}להמשיך?`,
+    `שליחת בונוסים לכולם - ${monthDisplay}`,
+    `האם הינך בטוח שאתה רוצה לשלוח בונוסים של חודש ${monthDisplay} ל-${withPhone.length} נציגים (לפי הסינון הנוכחי)? ${withoutPhone.length ? withoutPhone.length + ' נציגים ללא מספר טלפון יידלגו. ' : ''}${withoutData.length ? withoutData.length + ' נציגים ללא נתוני בונוס לחודש זה יידלגו. ' : ''}`,
     [
       { label: 'ביטול', style: { background: 'var(--surface)' } },
-      { label: `שלח ל-${withPhone.length} נציגים`, style: { background: 'var(--accent-service)', color: '#fff', borderColor: 'var(--accent-service)' }, onClick: () => runBulkWhatsAppSend(withPhone) },
+      { label: `כן, שלח ל-${withPhone.length} נציגים`, style: { background: 'var(--accent-service)', color: '#fff', borderColor: 'var(--accent-service)' }, onClick: () => runBulkWhatsAppSend(withPhone, monthFilter) },
     ]
   );
 });
@@ -2697,6 +2785,7 @@ async function runBulkWhatsAppSend(targets) {
     btn.textContent = `שולח… (${i + 1}/${targets.length})`;
     const message = buildWhatsAppMessage(agent, point);
     const result = await sendWhatsAppMessage(agent.phone, message);
+    await logMessage(agent, point, message, result);
     if (result.ok) sent++; else failed++;
   }
   btn.disabled = false;
@@ -3003,6 +3092,98 @@ async function refreshUsersTable() {
   } catch (err) {
     console.error(err);
     tbody.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת הנתונים.</td></tr>';
+  }
+}
+
+
+/* ================= MESSAGE HISTORY TAB ================= */
+async function initMessagesTabIfNeeded() {
+  await populateMsgMonthSelect();
+  await refreshMessageHistory();
+}
+
+async function populateMsgMonthSelect() {
+  const sel = document.getElementById('msgMonthSelect');
+  const prevVal = sel.value;
+  sel.innerHTML = '<option value="">הכל</option>';
+  try {
+    const { data, error } = await sb.from('message_log').select('month');
+    if (error) throw error;
+    const months = [...new Set((data || []).map(r => r.month).filter(Boolean))].sort().reverse();
+    months.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = monthLabel(m);
+      sel.appendChild(opt);
+    });
+    sel.value = prevVal;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+document.getElementById('msgMonthSelect').addEventListener('change', refreshMessageHistory);
+document.getElementById('msgStatusSelect').addEventListener('change', refreshMessageHistory);
+document.getElementById('msgSearchInput').addEventListener('input', () => {
+  clearTimeout(window.__msgSearchTimer);
+  window.__msgSearchTimer = setTimeout(refreshMessageHistory, 250);
+});
+
+async function refreshMessageHistory() {
+  const monthFilter = document.getElementById('msgMonthSelect').value;
+  const statusFilter = document.getElementById('msgStatusSelect').value;
+  const search = normalizeName(document.getElementById('msgSearchInput').value).toLowerCase();
+  const tbody = document.getElementById('msgTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+
+  try {
+    let query = sb.from('message_log').select('*').order('sent_at', { ascending: false }).limit(500);
+    if (monthFilter) query = query.eq('month', monthFilter);
+    if (statusFilter) query = query.eq('status', statusFilter);
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let rows = data || [];
+    if (search) {
+      rows = rows.filter(r =>
+        (r.full_name || '').toLowerCase().includes(search) ||
+        String(r.emp_id || '').includes(search)
+      );
+    }
+
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">לא נמצאו הודעות.</td></tr>';
+      return;
+    }
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      const dt = r.sent_at ? new Date(r.sent_at).toLocaleString('he-IL') : '—';
+      const statusLabel = r.status === 'sent' ? 'נשלח בהצלחה' : 'נכשל';
+      const statusClass = r.status === 'sent' ? 'sent' : 'failed';
+      tr.innerHTML = `
+        <td>${dt}</td>
+        <td>${r.full_name || '—'}</td>
+        <td>${r.emp_id || '—'}</td>
+        <td>${DEPT_LABELS[r.department] || r.department || '—'}</td>
+        <td>${r.month ? monthLabel(r.month) : '—'}</td>
+        <td dir="ltr" style="text-align:right;">${r.phone || '—'}</td>
+        <td><span class="msg-status-badge ${statusClass}">${statusLabel}</span></td>
+        <td><button class="icon-btn" data-view-msg="${r.id}" aria-label="צפה בהודעה">👁</button></td>
+      `;
+      tbody.appendChild(tr);
+
+      tr.querySelector('[data-view-msg]').addEventListener('click', () => {
+        showModal(
+          `הודעה ל-${r.full_name || r.emp_id}`,
+          (r.message || '') + (r.error_detail ? `\n\nפרטי שגיאה: ${r.error_detail}` : ''),
+          [{ label: 'סגור', style: { background: 'var(--surface)' } }]
+        );
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת ההיסטוריה.</td></tr>';
   }
 }
 
