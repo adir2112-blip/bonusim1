@@ -535,12 +535,6 @@
     </div>
 
     <section class="dept" id="tnuatSection">
-      <div class="dept-header">
-        <div class="dept-title">
-          <span class="dot movement"></span>
-          <h2>תנועת</h2>
-        </div>
-      </div>
       <div class="dept-toolbar">
         <div class="spacer"></div>
         <button class="primary-movement" id="addTnuatRowBtn">+ הוסף נציג</button>
@@ -600,10 +594,10 @@
         <span class="toolbar-label">מחלקה</span>
         <select id="agentFilterDept">
           <option value="">הכל</option>
-          <option value="sales">פריפיט - מכירות</option>
-          <option value="service">פריפיט - שירות</option>
-          <option value="tnuat">מובמנט - תנועת</option>
-          <option value="meuhedet">מובמנט - מאוחדת</option>
+          <option value="sales">פריפיט מכירות</option>
+          <option value="service">פריפיט שירות לקוחות</option>
+          <option value="tnuat">מובמנט</option>
+          <option value="meuhedet">מאוחדת</option>
         </select>
       </div>
       <div class="divider-v"></div>
@@ -721,10 +715,10 @@
         <span class="toolbar-label">מחלקה</span>
         <select id="dashDeptSelect">
           <option value="">הכל</option>
-          <option value="sales">פריפיט - מכירות</option>
-          <option value="service">פריפיט - שירות</option>
-          <option value="tnuat">מובמנט - תנועת</option>
-          <option value="meuhedet">מובמנט - מאוחדת</option>
+          <option value="sales">פריפיט מכירות</option>
+          <option value="service">פריפיט שירות לקוחות</option>
+          <option value="tnuat">מובמנט</option>
+          <option value="meuhedet">מאוחדת</option>
         </select>
       </div>
     </div>
@@ -778,10 +772,10 @@
         <span class="toolbar-label">מחלקה</span>
         <select id="usersDeptSelect">
           <option value="">הכל</option>
-          <option value="sales">פריפיט - מכירות</option>
-          <option value="service">פריפיט - שירות</option>
-          <option value="tnuat">מובמנט - תנועת</option>
-          <option value="meuhedet">מובמנט - מאוחדת</option>
+          <option value="sales">פריפיט מכירות</option>
+          <option value="service">פריפיט שירות לקוחות</option>
+          <option value="tnuat">מובמנט</option>
+          <option value="meuhedet">מאוחדת</option>
         </select>
       </div>
       <div class="divider-v"></div>
@@ -2201,10 +2195,10 @@ function switchTab(tab) {
 
 /* ================= AGENT BONUS TAB ================= */
 const DEPT_LABELS = {
-  sales: 'פריפיט - מכירות',
-  service: 'פריפיט - שירות',
-  tnuat: 'מובמנט - תנועת',
-  meuhedet: 'מובמנט - מאוחדת',
+  sales: 'פריפיט מכירות',
+  service: 'פריפיט שירות לקוחות',
+  tnuat: 'מובמנט',
+  meuhedet: 'מאוחדת',
 };
 const DEPT_DOT_CLASS = {
   sales: 'sales', service: 'service', tnuat: 'movement', meuhedet: 'movement',
@@ -2578,6 +2572,8 @@ function buildWhatsAppMessage(agent, point) {
   lines.push('');
   lines.push(`סה"כ בונוס: ${fmt(point.total, 0)} ₪`);
   lines.push('');
+  lines.push('לתשומת ליבך: הבונוס בהודעה זו נשלח אוטומטית ומהווה הערכה בלבד, לא נתון סופי. הבונוס המדויק והקובע יופיע בתלוש השכר.');
+  lines.push('');
   lines.push('בברכה, מערכת הבונוסים');
   return lines.join('\n');
 }
@@ -2599,11 +2595,17 @@ async function sendWhatsAppMessage(phone, message) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: normalized, message })
     });
-    if (!res.ok) return { ok: false, reason: `http-${res.status}` };
-    return { ok: true };
+    let bodyText = '';
+    try { bodyText = await res.text(); } catch (e) { /* ignore */ }
+    console.log('WhatsApp API response:', res.status, bodyText);
+    if (!res.ok) return { ok: false, reason: `http-${res.status}`, detail: bodyText };
+    return { ok: true, detail: bodyText };
   } catch (err) {
-    console.error(err);
-    return { ok: false, reason: 'network' };
+    console.error('WhatsApp send error:', err);
+    // A TypeError with no further detail from fetch() almost always means
+    // either a CORS block or the endpoint being unreachable (DNS/SSL/down).
+    const reason = (err instanceof TypeError) ? 'cors-or-unreachable' : 'network';
+    return { ok: false, reason, detail: String(err && err.message || err) };
   }
 }
 
@@ -2626,7 +2628,10 @@ document.getElementById('sendWhatsAppBtn').addEventListener('click', async () =>
   if (result.ok) {
     showBanner('ok', `ההודעה נשלחה בהצלחה ל-${normalizeName(selectedAgent.first_name + ' ' + selectedAgent.last_name)}.`);
   } else {
-    showBanner('error', `שליחת ההודעה נכשלה (${result.reason}). ודא שהבוט פעיל ושמספר הטלפון תקין.`);
+    const reasonText = result.reason === 'cors-or-unreachable'
+      ? 'חסימת CORS או שהשרת לא נגיש מהדפדפן'
+      : result.reason;
+    showBanner('error', `שליחת ההודעה נכשלה (${reasonText})${result.detail ? ' — ' + result.detail : ''}. ודא שהבוט פעיל ושמספר הטלפון תקין.`);
   }
 });
 
