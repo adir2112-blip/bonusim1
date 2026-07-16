@@ -356,6 +356,7 @@
     <div class="toolbar-group">
       <span class="toolbar-label">חודש</span>
       <select id="monthSelect"></select>
+      <button id="renameMonthBtn" title="שנה את השם המוצג של החודש הנוכחי">✏️ שנה שם</button>
       <button id="newMonthBtn">+ חודש חדש</button>
       <input type="month" id="newMonthTargetInput" style="width:140px;" title="בחר חודש ספציפי ליצירה (לא חייב להיות החודש הבא)" />
       <button id="newMonthSpecificBtn">צור חודש זה</button>
@@ -401,7 +402,7 @@
       <span class="toolbar-label">קבצי דוח מובמנט</span>
       <button id="uploadMvControlBtn" title="עמודות: A=ת&quot;ז, D=% עמידה בבקרה">ציון בקרה</button>
       <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, D=שיחות נכנסות, F=שיחות יוצאות">שיחות טלפוניות</button>
+      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, C=שיחות נענות, D=שיחות יוצאות">שיחות טלפוניות</button>
       <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
@@ -1775,8 +1776,8 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
     const r = data[i];
     if (!r) continue;
     const nameVal = r[1]; // column B
-    const inc = Number(r[3]); // column D
-    const out = Number(r[5]); // column F
+    const inc = Number(r[2]); // column C - שיחות נענות
+    const out = Number(r[3]); // column D - שיחות יוצאות
     if (nameVal === null || nameVal === undefined || nameVal === '') continue;
     const total = (isNaN(inc) ? 0 : inc) + (isNaN(out) ? 0 : out);
     if (total === 0 && isNaN(inc) && isNaN(out)) continue;
@@ -1811,10 +1812,20 @@ function currentMonth() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
 }
+const monthCustomLabels = {}; // month -> custom label, populated from DB
+
 function monthLabel(monthStr) {
-  // '2026-04' -> '04/26'
+  if (monthStr && monthCustomLabels[monthStr]) return monthCustomLabels[monthStr];
   const [y, m] = monthStr.split('-');
   return `${m}/${y.slice(2)}`;
+}
+
+async function loadMonthCustomLabels() {
+  try {
+    const { data, error } = await sb.from('month_settings').select('month, label');
+    if (error) throw error;
+    (data || []).forEach(r => { if (r.label) monthCustomLabels[r.month] = r.label; });
+  } catch (err) { console.error(err); }
 }
 function shiftMonth(monthStr, delta) {
   const [y, m] = monthStr.split('-').map(Number);
@@ -2165,6 +2176,27 @@ async function createNewMonth(targetMonth) {
   showBanner('ok', `חודש ${monthLabel(targetMonth)} נוצר עם ${allAgents.length} נציגים (ללא נתונים חודשיים).`);
 }
 
+document.getElementById('renameMonthBtn').addEventListener('click', async () => {
+  const current = activeMonth;
+  const currentLabel = monthLabel(current);
+  const newName = prompt(`שם מוצג נוכחי: "${currentLabel}"\nהכנס שם חדש לחודש ${current} (השאר ריק לאיפוס לברירת מחדל):`, monthCustomLabels[current] || '');
+  if (newName === null) return; // cancelled
+  try {
+    await sb.from('month_settings').upsert(
+      { month: current, label: newName.trim(), work_days: (await loadMonthWorkDays(current)) },
+      { onConflict: 'month' }
+    );
+    if (newName.trim()) monthCustomLabels[current] = newName.trim();
+    else delete monthCustomLabels[current];
+    await populateMonthSelect();
+    document.getElementById('monthSelect').value = current;
+    showBanner('ok', `שם החודש עודכן ל-"${monthLabel(current)}".`);
+  } catch (err) {
+    console.error(err);
+    showBanner('error', 'שגיאה בשמירת השם.');
+  }
+});
+
 document.getElementById('newMonthBtn').addEventListener('click', async () => {
   await createNewMonth(shiftMonth(activeMonth, 1));
 });
@@ -2229,6 +2261,7 @@ async function resetAllData() {
 (async function init() {
   await loadDeletedAgents();
   await loadAllMonthWorkDays();
+  await loadMonthCustomLabels();
   await populateMonthSelect();
   await loadMonth(activeMonth);
 })();
