@@ -501,7 +501,7 @@
                 <th>שם משפחה</th>
                 <th>שם פרטי</th>
                 <th>טלפון</th>
-                <th class="col-divider">ציון סקרים (נטען מקובץ)</th>
+                <th class="col-divider">ציון סקרים (נטען מקובץ / ידני)</th>
                 <th>ציון מדד סקרים</th>
                 <th class="col-divider">שעות עבודה</th>
                 <th>תקן מלא</th>
@@ -1146,7 +1146,7 @@ function serviceRowHTML(r) {
     <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
     <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
     <td><input type="text" value="${r.phone || ''}" data-id="${r.id}" data-field="phone" placeholder="050-0000000" dir="ltr" /></td>
-    <td class="col-divider num muted" data-cell="surveyScore">${r.surveyScore === '' || r.surveyScore == null ? '—' : fmt(r.surveyScore, 2)}</td>
+    <td class="col-divider"><input type="number" value="${r.surveyScore}" data-id="${r.id}" data-field="surveyScore" step="0.01" /></td>
     <td class="num muted" data-cell="sSurvey"></td>
     <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
     <td class="num muted" data-cell="fullStd"></td>
@@ -1187,7 +1187,6 @@ function renderServiceCalcOnly() {
     totalBonus += c.totalBonus;
     const tr = document.querySelector(`#serviceTbody tr[data-row-id="${r.id}"]`);
     if (!tr) return;
-    tr.querySelector('[data-cell="surveyScore"]').textContent = (r.surveyScore === '' || r.surveyScore == null) ? '—' : fmt(r.surveyScore, 2);
     tr.querySelector('[data-cell="sSurvey"]').textContent = fmt(c.sSurvey * 100, 0) + '%';
     tr.querySelector('[data-cell="workHours"]').textContent = r.workHours == null ? '—' : fmt(r.workHours, 2);
     tr.querySelector('[data-cell="fullStd"]').textContent = fmt(c.fullStd, 1);
