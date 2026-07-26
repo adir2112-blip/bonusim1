@@ -1414,7 +1414,12 @@ function bindRowEvents(tbody, updateFn, removeFn) {
   tbody.querySelectorAll('input').forEach(input => {
     input.addEventListener('input', (e) => {
       const { id, field } = e.target.dataset;
-      updateFn(id, field, e.target.value);
+      let value = e.target.value;
+      if (field === 'surveyScore') {
+        value = value.replace(/(\.\d{2})\d+/, '$1');
+        e.target.value = value;
+      }
+      updateFn(id, field, value);
     });
   });
   tbody.querySelectorAll('[data-remove]').forEach(btn => {
@@ -1663,7 +1668,7 @@ bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
   let matched = 0;
   serviceRows.forEach(r => {
     const full = normalizeName(`${r.firstName} ${r.lastName}`);
-    if (full && sums.hasOwnProperty(full)) { r.surveyScore = sums[full] / counts[full]; matched++; }
+    if (full && sums.hasOwnProperty(full)) { r.surveyScore = Math.round((sums[full] / counts[full]) * 100) / 100; matched++; }
   });
   showBanner('ok', `ציון סקרים נטען (ממוצע) ל-${matched} נציגים, לפי התאמת שם מלא.`);
   renderServiceCalcOnly();
