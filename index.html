@@ -1686,6 +1686,7 @@ function salesPillHTML(pct) {
 }
 function openSalesSummary() {
   const rows = salesRows.map(r => ({ r, c: computeSalesRow(r) }));
+  rows.sort((a, b) => b.c.pctTarget - a.c.pctTarget);
 
   document.getElementById('salesSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
       <tr>
