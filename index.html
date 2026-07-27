@@ -332,6 +332,115 @@
     body * { visibility: hidden; }
     #payslipCard, #payslipCard * { visibility: visible; }
     #payslipCard { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; border: none; }
+    #serviceSummaryPrintArea, #serviceSummaryPrintArea * { visibility: visible; }
+    #serviceSummaryPrintArea { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; }
+  }
+
+  /* ===== Service survey/calls summary popup (presentation-ready) ===== */
+  .summary-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(20, 26, 24, 0.55);
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(2px);
+  }
+  .summary-modal {
+    background: var(--surface);
+    border-radius: 16px;
+    width: 94%;
+    max-width: 980px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+    overflow: hidden;
+  }
+  .summary-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 26px;
+    background: linear-gradient(135deg, var(--accent-service), #123F36);
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .summary-modal-heading { display: flex; align-items: center; gap: 14px; }
+  .summary-modal-icon {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: rgba(255,255,255,0.16);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .summary-modal-title { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.2px; }
+  .summary-modal-subtitle { font-size: 12.5px; margin: 3px 0 0; color: rgba(255,255,255,0.78); }
+  .summary-modal-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .summary-modal-count {
+    font-size: 12px; font-weight: 600; color: #fff;
+    background: rgba(255,255,255,0.16);
+    padding: 5px 12px; border-radius: 999px; white-space: nowrap;
+  }
+  .summary-print-btn {
+    border: 1px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+  .summary-print-btn:hover { background: rgba(255,255,255,0.22); }
+  .summary-modal-close {
+    border: none; background: rgba(255,255,255,0.14); color: #fff;
+    width: 32px; height: 32px; border-radius: 50%; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .summary-modal-close:hover { background: rgba(255,255,255,0.28); }
+  .summary-modal-body { padding: 22px 26px 26px; overflow-y: auto; }
+  .print-only-title { display: none; }
+  .summary-table-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table.summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.summary-table thead th {
+    background: linear-gradient(135deg, var(--accent-service), #17544A);
+    color: #fff;
+    text-align: right;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 13px 16px;
+    white-space: nowrap;
+  }
+  table.summary-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+  }
+  table.summary-table tbody td.agent-name { font-weight: 600; color: var(--text); }
+  table.summary-table tbody tr:nth-child(even) { background: #F5FAF8; }
+  table.summary-table tbody tr:hover { background: var(--accent-service-bg); }
+  table.summary-table tbody tr:last-child td { border-bottom: none; }
+  table.summary-table tfoot td {
+    padding: 13px 16px;
+    font-weight: 700;
+    background: #EEF6F2;
+    border-top: 2px solid var(--accent-service);
+    color: var(--text);
+  }
+  .score-pill {
+    display: inline-block;
+    padding: 4px 13px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .score-pill.good { background: var(--success-bg); color: var(--success-text); }
+  .score-pill.mid { background: #F8ECC7; color: #8A6A15; }
+  .score-pill.bad { background: var(--danger-bg); color: var(--danger-text); }
+  @media print {
+    .summary-modal-header, .summary-print-btn, .summary-modal-close { display: none !important; }
+    .print-only-title { display: block; font-size: 20px; font-weight: 700; margin-bottom: 18px; color: #111; }
+    .summary-table-card { border: none; box-shadow: none; }
   }
 </style>
 </head>
@@ -382,28 +491,42 @@
     </div>
   </div>
 
-  <div id="serviceSummaryOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:var(--surface); border-radius:12px; padding:24px; max-width:900px; width:92%; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-        <p style="font-size:16px; font-weight:600; margin:0;">ציוני סקרים ופניות - שירות לקוחות</p>
-        <button class="icon-btn" id="closeServiceSummaryBtn" aria-label="סגור">✕</button>
+  <div id="serviceSummaryOverlay" class="summary-overlay" style="display:none;">
+    <div class="summary-modal">
+      <div class="summary-modal-header">
+        <div class="summary-modal-heading">
+          <span class="summary-modal-icon">📊</span>
+          <div>
+            <p class="summary-modal-title">מדדי סקרים ופניות &middot; שירות לקוחות</p>
+            <p class="summary-modal-subtitle" id="serviceSummarySubtitle">פריפיט</p>
+          </div>
+        </div>
+        <div class="summary-modal-actions">
+          <span class="summary-modal-count" id="serviceSummaryCount"></span>
+          <button class="summary-print-btn" id="printServiceSummaryBtn">🖨️ הדפס / PDF</button>
+          <button class="summary-modal-close" id="closeServiceSummaryBtn" aria-label="סגור">✕</button>
+        </div>
       </div>
-      <div class="table-card">
-        <div class="table-scroll">
-          <table id="serviceSummaryTable">
-            <thead>
-              <tr>
-                <th>שם פרטי</th>
-                <th>שם משפחה</th>
-                <th>ציון סקרים</th>
-                <th>ציון מדד סקרים</th>
-                <th>פניות שנסגרו</th>
-                <th>ממוצע פניות לשעה</th>
-                <th>ציון מדד פניות לשעה</th>
-              </tr>
-            </thead>
-            <tbody id="serviceSummaryTbody"></tbody>
-          </table>
+      <div class="summary-modal-body">
+        <div id="serviceSummaryPrintArea">
+          <p class="print-only-title" id="serviceSummaryPrintTitle"></p>
+          <div class="summary-table-card">
+            <table id="serviceSummaryTable" class="summary-table">
+              <thead>
+                <tr>
+                  <th>שם פרטי</th>
+                  <th>שם משפחה</th>
+                  <th>ציון סקרים</th>
+                  <th>ציון מדד סקרים</th>
+                  <th>פניות שנסגרו</th>
+                  <th>ממוצע פניות לשעה</th>
+                  <th>ציון מדד פניות לשעה</th>
+                </tr>
+              </thead>
+              <tbody id="serviceSummaryTbody"></tbody>
+              <tfoot id="serviceSummaryTfoot"></tfoot>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1457,21 +1580,47 @@ function bindRowEvents(tbody, updateFn, removeFn) {
 
 document.getElementById('addSalesRowBtn').addEventListener('click', addSalesRow);
 document.getElementById('addServiceRowBtn').addEventListener('click', addServiceRow);
+function scorePillHTML(fraction) {
+  const cls = fraction <= 0 ? 'bad' : fraction < 0.8 ? 'mid' : 'good';
+  return `<span class="score-pill ${cls}">${fmt(fraction * 100, 0)}%</span>`;
+}
 function openServiceSummary() {
-  const tbody = document.getElementById('serviceSummaryTbody');
-  tbody.innerHTML = serviceRows.map(r => {
-    const c = computeServiceRow(r);
-    return `
+  const rows = serviceRows.map(r => ({ r, c: computeServiceRow(r) }));
+
+  document.getElementById('serviceSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
       <tr>
-        <td>${r.firstName || ''}</td>
-        <td>${r.lastName || ''}</td>
+        <td class="agent-name">${r.firstName || ''}</td>
+        <td class="agent-name">${r.lastName || ''}</td>
         <td class="num">${r.surveyScore === '' || r.surveyScore == null ? '—' : fmt(r.surveyScore, 2)}</td>
-        <td class="num">${fmt(c.sSurvey * 100, 0)}%</td>
+        <td class="num">${scorePillHTML(c.sSurvey)}</td>
         <td class="num">${r.closedCalls === '' || r.closedCalls == null ? '—' : fmt(r.closedCalls, 2)}</td>
         <td class="num">${fmt(c.avgCallsPerHour, 2)}</td>
-        <td class="num">${fmt(c.sCalls * 100, 0)}%</td>
-      </tr>`;
-  }).join('');
+        <td class="num">${scorePillHTML(c.sCalls)}</td>
+      </tr>`).join('') : `<tr><td colspan="7" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
+
+  const surveyVals = rows.map(({ r }) => (r.surveyScore === '' || r.surveyScore == null) ? null : Number(r.surveyScore)).filter(v => v !== null && !isNaN(v));
+  const closedVals = rows.map(({ r }) => (r.closedCalls === '' || r.closedCalls == null) ? null : Number(r.closedCalls)).filter(v => v !== null && !isNaN(v));
+  const avgSurveyScore = surveyVals.length ? surveyVals.reduce((a, b) => a + b, 0) / surveyVals.length : null;
+  const totalClosedCalls = closedVals.length ? closedVals.reduce((a, b) => a + b, 0) : null;
+  const avgSSurvey = rows.length ? rows.reduce((a, { c }) => a + c.sSurvey, 0) / rows.length : 0;
+  const avgCallsPerHour = rows.length ? rows.reduce((a, { c }) => a + c.avgCallsPerHour, 0) / rows.length : 0;
+  const avgSCalls = rows.length ? rows.reduce((a, { c }) => a + c.sCalls, 0) / rows.length : 0;
+
+  document.getElementById('serviceSummaryTfoot').innerHTML = rows.length ? `
+    <tr>
+      <td colspan="2">ממוצע / סה"כ</td>
+      <td class="num">${avgSurveyScore === null ? '—' : fmt(avgSurveyScore, 2)}</td>
+      <td class="num">${fmt(avgSSurvey * 100, 0)}%</td>
+      <td class="num">${totalClosedCalls === null ? '—' : fmt(totalClosedCalls, 0)}</td>
+      <td class="num">${fmt(avgCallsPerHour, 2)}</td>
+      <td class="num">${fmt(avgSCalls * 100, 0)}%</td>
+    </tr>` : '';
+
+  const monthLabel = document.getElementById('monthSelect').selectedOptions[0]?.textContent || '';
+  document.getElementById('serviceSummaryCount').textContent = `${rows.length} נציגים`;
+  document.getElementById('serviceSummarySubtitle').textContent = monthLabel ? `פריפיט · שירות לקוחות · ${monthLabel}` : 'פריפיט · שירות לקוחות';
+  document.getElementById('serviceSummaryPrintTitle').textContent = monthLabel ? `מדדי סקרים ופניות · שירות לקוחות · ${monthLabel}` : 'מדדי סקרים ופניות · שירות לקוחות';
+
   document.getElementById('serviceSummaryOverlay').style.display = 'flex';
 }
 document.getElementById('showServiceSummaryBtn').addEventListener('click', openServiceSummary);
@@ -1481,6 +1630,7 @@ document.getElementById('closeServiceSummaryBtn').addEventListener('click', () =
 document.getElementById('serviceSummaryOverlay').addEventListener('click', (e) => {
   if (e.target.id === 'serviceSummaryOverlay') e.target.style.display = 'none';
 });
+document.getElementById('printServiceSummaryBtn').addEventListener('click', () => window.print());
 document.getElementById('yaad').addEventListener('input', (e) => { yaad = Number(e.target.value) || 0; renderSalesCalcOnly(); });
 let wdToolbarSaveTimer = null;
 document.getElementById('workDays').addEventListener('input', (e) => {
