@@ -574,6 +574,7 @@
                   <th>שם משפחה</th>
                   <th>מכירות</th>
                   <th>שעות עבודה</th>
+                  <th>פריון</th>
                   <th>% עמידה ביעד</th>
                   <th class="summary-remove-col"></th>
                 </tr>
@@ -1721,14 +1722,17 @@ function renderSalesSummaryTable() {
         <td class="agent-name">${r.lastName || ''}</td>
         <td class="num">${r.sales === '' || r.sales == null ? '—' : fmt(r.sales, 0)}</td>
         <td class="num">${r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2)}</td>
+        <td class="num">${(Number(r.workHours) > 0) ? fmt((Number(r.sales) || 0) / Number(r.workHours), 3) : '—'}</td>
         <td class="num">${salesPillHTML(c.pctTarget)}</td>
         <td class="summary-remove-col"><button class="summary-remove-btn" data-remove-id="${r.id}" aria-label="הסר מהתצוגה">✕</button></td>
-      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
+      </tr>`).join('') : `<tr><td colspan="7" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
 
   const salesVals = rows.map(({ r }) => (r.sales === '' || r.sales == null) ? null : Number(r.sales)).filter(v => v !== null && !isNaN(v));
   const hoursVals = rows.map(({ r }) => (r.workHours === null || r.workHours === undefined) ? null : Number(r.workHours)).filter(v => v !== null && !isNaN(v));
+  const productivityVals = rows.map(({ r }) => (Number(r.workHours) > 0) ? (Number(r.sales) || 0) / Number(r.workHours) : null).filter(v => v !== null && !isNaN(v));
   const totalSales = salesVals.length ? salesVals.reduce((a, b) => a + b, 0) : null;
   const totalHours = hoursVals.length ? hoursVals.reduce((a, b) => a + b, 0) : null;
+  const avgProductivity = productivityVals.length ? productivityVals.reduce((a, b) => a + b, 0) / productivityVals.length : null;
   const avgPct = rows.length ? rows.reduce((a, { c }) => a + c.pctTarget, 0) / rows.length : 0;
 
   document.getElementById('salesSummaryTfoot').innerHTML = rows.length ? `
@@ -1736,6 +1740,7 @@ function renderSalesSummaryTable() {
       <td colspan="2">ממוצע / סה"כ</td>
       <td class="num">${totalSales === null ? '—' : fmt(totalSales, 0)}</td>
       <td class="num">${totalHours === null ? '—' : fmt(totalHours, 2)}</td>
+      <td class="num">${avgProductivity === null ? '—' : fmt(avgProductivity, 3)}</td>
       <td class="num">${fmt(avgPct * 100, 0)}%</td>
       <td class="summary-remove-col"></td>
     </tr>` : '';
