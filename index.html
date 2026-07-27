@@ -1617,10 +1617,10 @@ function openServiceSummary() {
       <td class="num">${fmt(avgSCalls * 100, 0)}%</td>
     </tr>` : '';
 
-  const monthLabel = document.getElementById('monthSelect').selectedOptions[0]?.textContent || '';
+  const selectedMonthLabel = document.getElementById('monthSelect').selectedOptions[0]?.textContent || '';
   document.getElementById('serviceSummaryCount').textContent = `${rows.length} נציגים`;
-  document.getElementById('serviceSummarySubtitle').textContent = monthLabel ? `פריפיט · שירות לקוחות · ${monthLabel}` : 'פריפיט · שירות לקוחות';
-  document.getElementById('serviceSummaryPrintTitle').textContent = monthLabel ? `מדדי סקרים ופניות · שירות לקוחות · ${monthLabel}` : 'מדדי סקרים ופניות · שירות לקוחות';
+  document.getElementById('serviceSummarySubtitle').textContent = 'פריפיט · שירות לקוחות';
+  document.getElementById('serviceSummaryPrintTitle').textContent = selectedMonthLabel ? `מדדי סקרים ופניות · שירות לקוחות · ${selectedMonthLabel}` : 'מדדי סקרים ופניות · שירות לקוחות';
 
   document.getElementById('serviceSummaryOverlay').style.display = 'flex';
 }
