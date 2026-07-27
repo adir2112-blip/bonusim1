@@ -1586,6 +1586,7 @@ function scorePillHTML(fraction) {
 }
 function openServiceSummary() {
   const rows = serviceRows.map(r => ({ r, c: computeServiceRow(r) }));
+  rows.sort((a, b) => b.c.sCalls - a.c.sCalls);
 
   document.getElementById('serviceSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
       <tr>
