@@ -444,7 +444,14 @@
   table.summary-table.theme-sales tbody tr:nth-child(even) { background: #FBF3E9; }
   table.summary-table.theme-sales tbody tr:hover { background: var(--accent-sales-bg); }
   table.summary-table.theme-sales tfoot td { background: #F7ECDD; border-top: 2px solid var(--accent-sales); }
+  .summary-remove-col { width: 40px; text-align: center; }
+  .summary-remove-btn {
+    border: none; background: transparent; color: var(--danger-text);
+    font-size: 15px; font-weight: 700; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+  }
+  .summary-remove-btn:hover { background: var(--danger-bg); }
   @media print {
+    .summary-remove-col { display: none !important; }
     .summary-modal-header, .summary-print-btn, .summary-modal-close { display: none !important; }
     .print-only-title { display: block; font-size: 20px; font-weight: 700; margin-bottom: 18px; color: #111; }
     .summary-table-card { border: none; box-shadow: none; }
@@ -528,6 +535,7 @@
                   <th>פניות שנסגרו</th>
                   <th>ממוצע פניות לשעה</th>
                   <th>ציון מדד פניות לשעה</th>
+                  <th class="summary-remove-col"></th>
                 </tr>
               </thead>
               <tbody id="serviceSummaryTbody"></tbody>
@@ -567,6 +575,7 @@
                   <th>מכירות</th>
                   <th>שעות עבודה</th>
                   <th>% עמידה ביעד</th>
+                  <th class="summary-remove-col"></th>
                 </tr>
               </thead>
               <tbody id="salesSummaryTbody"></tbody>
@@ -1631,11 +1640,12 @@ function scorePillHTML(fraction) {
   const cls = fraction <= 0 ? 'bad' : fraction < 0.8 ? 'mid' : 'good';
   return `<span class="score-pill ${cls}">${fmt(fraction * 100, 0)}%</span>`;
 }
-function openServiceSummary() {
-  const rows = serviceRows.map(r => ({ r, c: computeServiceRow(r) }));
-  rows.sort((a, b) => b.c.sCalls - a.c.sCalls);
-
-  document.getElementById('serviceSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
+let serviceSummaryRows = [];
+let serviceSummaryHidden = new Set();
+function renderServiceSummaryTable() {
+  const rows = serviceSummaryRows.filter(({ r }) => !serviceSummaryHidden.has(r.id));
+  const tbody = document.getElementById('serviceSummaryTbody');
+  tbody.innerHTML = rows.length ? rows.map(({ r, c }) => `
       <tr>
         <td class="agent-name">${r.firstName || ''}</td>
         <td class="agent-name">${r.lastName || ''}</td>
@@ -1644,7 +1654,8 @@ function openServiceSummary() {
         <td class="num">${r.closedCalls === '' || r.closedCalls == null ? '—' : fmt(r.closedCalls, 2)}</td>
         <td class="num">${fmt(c.avgCallsPerHour, 2)}</td>
         <td class="num">${scorePillHTML(c.sCalls)}</td>
-      </tr>`).join('') : `<tr><td colspan="7" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
+        <td class="summary-remove-col"><button class="summary-remove-btn" data-remove-id="${r.id}" aria-label="הסר מהתצוגה">✕</button></td>
+      </tr>`).join('') : `<tr><td colspan="8" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
 
   const surveyVals = rows.map(({ r }) => (r.surveyScore === '' || r.surveyScore == null) ? null : Number(r.surveyScore)).filter(v => v !== null && !isNaN(v));
   const closedVals = rows.map(({ r }) => (r.closedCalls === '' || r.closedCalls == null) ? null : Number(r.closedCalls)).filter(v => v !== null && !isNaN(v));
@@ -1662,10 +1673,25 @@ function openServiceSummary() {
       <td class="num">${totalClosedCalls === null ? '—' : fmt(totalClosedCalls, 0)}</td>
       <td class="num">${fmt(avgCallsPerHour, 2)}</td>
       <td class="num">${fmt(avgSCalls * 100, 0)}%</td>
+      <td class="summary-remove-col"></td>
     </tr>` : '';
 
-  const selectedMonthLabel = document.getElementById('monthSelect').selectedOptions[0]?.textContent || '';
   document.getElementById('serviceSummaryCount').textContent = `${rows.length} נציגים`;
+
+  tbody.querySelectorAll('[data-remove-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      serviceSummaryHidden.add(e.currentTarget.dataset.removeId);
+      renderServiceSummaryTable();
+    });
+  });
+}
+function openServiceSummary() {
+  serviceSummaryHidden = new Set();
+  serviceSummaryRows = serviceRows.map(r => ({ r, c: computeServiceRow(r) }));
+  serviceSummaryRows.sort((a, b) => b.c.sCalls - a.c.sCalls);
+  renderServiceSummaryTable();
+
+  const selectedMonthLabel = document.getElementById('monthSelect').selectedOptions[0]?.textContent || '';
   document.getElementById('serviceSummarySubtitle').textContent = 'פריפיט · שירות לקוחות';
   document.getElementById('serviceSummaryPrintTitle').textContent = selectedMonthLabel ? `מדדי סקרים ופניות · שירות לקוחות · ${selectedMonthLabel}` : 'מדדי סקרים ופניות · שירות לקוחות';
 
@@ -1684,18 +1710,20 @@ function salesPillHTML(pct) {
   const cls = pct >= 1.0 ? 'good' : pct >= 0.6 ? 'mid' : 'bad';
   return `<span class="score-pill ${cls}">${fmt(pct * 100, 0)}%</span>`;
 }
-function openSalesSummary() {
-  const rows = salesRows.map(r => ({ r, c: computeSalesRow(r) }));
-  rows.sort((a, b) => b.c.pctTarget - a.c.pctTarget);
-
-  document.getElementById('salesSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
+let salesSummaryRows = [];
+let salesSummaryHidden = new Set();
+function renderSalesSummaryTable() {
+  const rows = salesSummaryRows.filter(({ r }) => !salesSummaryHidden.has(r.id));
+  const tbody = document.getElementById('salesSummaryTbody');
+  tbody.innerHTML = rows.length ? rows.map(({ r, c }) => `
       <tr>
         <td class="agent-name">${r.firstName || ''}</td>
         <td class="agent-name">${r.lastName || ''}</td>
         <td class="num">${r.sales === '' || r.sales == null ? '—' : fmt(r.sales, 0)}</td>
         <td class="num">${r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2)}</td>
         <td class="num">${salesPillHTML(c.pctTarget)}</td>
-      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
+        <td class="summary-remove-col"><button class="summary-remove-btn" data-remove-id="${r.id}" aria-label="הסר מהתצוגה">✕</button></td>
+      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
 
   const salesVals = rows.map(({ r }) => (r.sales === '' || r.sales == null) ? null : Number(r.sales)).filter(v => v !== null && !isNaN(v));
   const hoursVals = rows.map(({ r }) => (r.workHours === null || r.workHours === undefined) ? null : Number(r.workHours)).filter(v => v !== null && !isNaN(v));
@@ -1709,9 +1737,24 @@ function openSalesSummary() {
       <td class="num">${totalSales === null ? '—' : fmt(totalSales, 0)}</td>
       <td class="num">${totalHours === null ? '—' : fmt(totalHours, 2)}</td>
       <td class="num">${fmt(avgPct * 100, 0)}%</td>
+      <td class="summary-remove-col"></td>
     </tr>` : '';
 
   document.getElementById('salesSummaryCount').textContent = `${rows.length} נציגים`;
+
+  tbody.querySelectorAll('[data-remove-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      salesSummaryHidden.add(e.currentTarget.dataset.removeId);
+      renderSalesSummaryTable();
+    });
+  });
+}
+function openSalesSummary() {
+  salesSummaryHidden = new Set();
+  salesSummaryRows = salesRows.map(r => ({ r, c: computeSalesRow(r) }));
+  salesSummaryRows.sort((a, b) => b.c.pctTarget - a.c.pctTarget);
+  renderSalesSummaryTable();
+
   document.getElementById('salesSummaryPrintTitle').textContent = 'מדדי מכירות ופריון · פריפיט מכירות';
 
   document.getElementById('salesSummaryOverlay').style.display = 'flex';
