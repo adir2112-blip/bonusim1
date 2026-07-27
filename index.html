@@ -334,6 +334,8 @@
     #payslipCard { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; border: none; }
     #serviceSummaryPrintArea, #serviceSummaryPrintArea * { visibility: visible; }
     #serviceSummaryPrintArea { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; }
+    #salesSummaryPrintArea, #salesSummaryPrintArea * { visibility: visible; }
+    #salesSummaryPrintArea { position: absolute; top: 0; right: 0; left: 0; margin: 0; max-width: 100%; }
   }
 
   /* ===== Service survey/calls summary popup (presentation-ready) ===== */
@@ -437,6 +439,11 @@
   .score-pill.good { background: var(--success-bg); color: var(--success-text); }
   .score-pill.mid { background: #F8ECC7; color: #8A6A15; }
   .score-pill.bad { background: var(--danger-bg); color: var(--danger-text); }
+  .summary-modal-header.theme-sales { background: linear-gradient(135deg, var(--accent-sales), #6E3A12); }
+  table.summary-table.theme-sales thead th { background: linear-gradient(135deg, var(--accent-sales), #7A4115); }
+  table.summary-table.theme-sales tbody tr:nth-child(even) { background: #FBF3E9; }
+  table.summary-table.theme-sales tbody tr:hover { background: var(--accent-sales-bg); }
+  table.summary-table.theme-sales tfoot td { background: #F7ECDD; border-top: 2px solid var(--accent-sales); }
   @media print {
     .summary-modal-header, .summary-print-btn, .summary-modal-close { display: none !important; }
     .print-only-title { display: block; font-size: 20px; font-weight: 700; margin-bottom: 18px; color: #111; }
@@ -532,6 +539,45 @@
     </div>
   </div>
 
+  <div id="salesSummaryOverlay" class="summary-overlay" style="display:none;">
+    <div class="summary-modal">
+      <div class="summary-modal-header theme-sales">
+        <div class="summary-modal-heading">
+          <span class="summary-modal-icon">📈</span>
+          <div>
+            <p class="summary-modal-title">מדדי מכירות ופריון &middot; פריפיט מכירות</p>
+            <p class="summary-modal-subtitle">פריפיט · מכירות</p>
+          </div>
+        </div>
+        <div class="summary-modal-actions">
+          <span class="summary-modal-count" id="salesSummaryCount"></span>
+          <button class="summary-print-btn" id="printSalesSummaryBtn">🖨️ הדפס / PDF</button>
+          <button class="summary-modal-close" id="closeSalesSummaryBtn" aria-label="סגור">✕</button>
+        </div>
+      </div>
+      <div class="summary-modal-body">
+        <div id="salesSummaryPrintArea">
+          <p class="print-only-title" id="salesSummaryPrintTitle"></p>
+          <div class="summary-table-card">
+            <table id="salesSummaryTable" class="summary-table theme-sales">
+              <thead>
+                <tr>
+                  <th>שם פרטי</th>
+                  <th>שם משפחה</th>
+                  <th>מכירות</th>
+                  <th>שעות עבודה</th>
+                  <th>% עמידה ביעד</th>
+                </tr>
+              </thead>
+              <tbody id="salesSummaryTbody"></tbody>
+              <tfoot id="salesSummaryTfoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="global-toolbar">
     <div class="toolbar-group">
       <span class="toolbar-label">קבצי דוח משותפים</span>
@@ -593,6 +639,7 @@
           <input type="number" id="yaad" value="1.5" step="0.1" />
         </div>
         <div class="spacer"></div>
+        <button id="showSalesSummaryBtn">הצגה</button>
         <button class="primary-sales" id="addSalesRowBtn">+ הוסף נציג</button>
       </div>
       <div class="table-card">
@@ -1632,6 +1679,50 @@ document.getElementById('serviceSummaryOverlay').addEventListener('click', (e) =
   if (e.target.id === 'serviceSummaryOverlay') e.target.style.display = 'none';
 });
 document.getElementById('printServiceSummaryBtn').addEventListener('click', () => window.print());
+
+function salesPillHTML(pct) {
+  const cls = pct >= 1.0 ? 'good' : pct >= 0.6 ? 'mid' : 'bad';
+  return `<span class="score-pill ${cls}">${fmt(pct * 100, 0)}%</span>`;
+}
+function openSalesSummary() {
+  const rows = salesRows.map(r => ({ r, c: computeSalesRow(r) }));
+
+  document.getElementById('salesSummaryTbody').innerHTML = rows.length ? rows.map(({ r, c }) => `
+      <tr>
+        <td class="agent-name">${r.firstName || ''}</td>
+        <td class="agent-name">${r.lastName || ''}</td>
+        <td class="num">${r.sales === '' || r.sales == null ? '—' : fmt(r.sales, 0)}</td>
+        <td class="num">${r.workHours === null || r.workHours === undefined ? '—' : fmt(r.workHours, 2)}</td>
+        <td class="num">${salesPillHTML(c.pctTarget)}</td>
+      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; padding:28px; color:var(--text-muted);">אין נציגים להצגה</td></tr>`;
+
+  const salesVals = rows.map(({ r }) => (r.sales === '' || r.sales == null) ? null : Number(r.sales)).filter(v => v !== null && !isNaN(v));
+  const hoursVals = rows.map(({ r }) => (r.workHours === null || r.workHours === undefined) ? null : Number(r.workHours)).filter(v => v !== null && !isNaN(v));
+  const totalSales = salesVals.length ? salesVals.reduce((a, b) => a + b, 0) : null;
+  const totalHours = hoursVals.length ? hoursVals.reduce((a, b) => a + b, 0) : null;
+  const avgPct = rows.length ? rows.reduce((a, { c }) => a + c.pctTarget, 0) / rows.length : 0;
+
+  document.getElementById('salesSummaryTfoot').innerHTML = rows.length ? `
+    <tr>
+      <td colspan="2">ממוצע / סה"כ</td>
+      <td class="num">${totalSales === null ? '—' : fmt(totalSales, 0)}</td>
+      <td class="num">${totalHours === null ? '—' : fmt(totalHours, 2)}</td>
+      <td class="num">${fmt(avgPct * 100, 0)}%</td>
+    </tr>` : '';
+
+  document.getElementById('salesSummaryCount').textContent = `${rows.length} נציגים`;
+  document.getElementById('salesSummaryPrintTitle').textContent = 'מדדי מכירות ופריון · פריפיט מכירות';
+
+  document.getElementById('salesSummaryOverlay').style.display = 'flex';
+}
+document.getElementById('showSalesSummaryBtn').addEventListener('click', openSalesSummary);
+document.getElementById('closeSalesSummaryBtn').addEventListener('click', () => {
+  document.getElementById('salesSummaryOverlay').style.display = 'none';
+});
+document.getElementById('salesSummaryOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'salesSummaryOverlay') e.target.style.display = 'none';
+});
+document.getElementById('printSalesSummaryBtn').addEventListener('click', () => window.print());
 document.getElementById('yaad').addEventListener('input', (e) => { yaad = Number(e.target.value) || 0; renderSalesCalcOnly(); });
 let wdToolbarSaveTimer = null;
 document.getElementById('workDays').addEventListener('input', (e) => {
