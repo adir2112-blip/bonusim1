@@ -1081,6 +1081,10 @@ function fmt(n, digits) {
 function normalizeName(s) {
   return String(s || '').trim().replace(/\s+/g, ' ');
 }
+// Order-independent key for matching full names between systems (e.g. "כהן איתמר" vs "איתמר כהן").
+function nameMatchKey(s) {
+  return normalizeName(s).split(' ').filter(Boolean).sort().join(' ');
+}
 function normalizeDept(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').replace(/[\u2010-\u2015\u2212]/g, '-');
 }
@@ -1395,6 +1399,8 @@ function renderServiceCalcOnly() {
     totalBonus += c.totalBonus;
     const tr = document.querySelector(`#serviceTbody tr[data-row-id="${r.id}"]`);
     if (!tr) return;
+    const surveyInput = tr.querySelector('[data-field="surveyScore"]');
+    if (surveyInput && document.activeElement !== surveyInput) surveyInput.value = r.surveyScore;
     tr.querySelector('[data-cell="sSurvey"]').textContent = fmt(c.sSurvey * 100, 0) + '%';
     tr.querySelector('[data-cell="workHours"]').textContent = r.workHours == null ? '—' : fmt(r.workHours, 2);
     tr.querySelector('[data-cell="fullStd"]').textContent = fmt(c.fullStd, 1);
@@ -1597,9 +1603,10 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
     },
     setByFullName: (fullName, field, value) => {
       let any = false;
+      const key = nameMatchKey(fullName);
       rows.forEach(r => {
-        const full = normalizeName(`${r.firstName} ${r.lastName}`);
-        if (full && full === fullName) { r[field] = value; any = true; }
+        const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
+        if (full && full === key) { r[field] = value; any = true; }
       });
       return any;
     },
@@ -2004,13 +2011,13 @@ bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
     const nameVal = r[0];
     const scoreVal = Number(r[5]);
     if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(scoreVal)) continue;
-    const key = normalizeName(nameVal);
+    const key = nameMatchKey(nameVal);
     sums[key] = (sums[key] || 0) + scoreVal;
     counts[key] = (counts[key] || 0) + 1;
   }
   let matched = 0;
   serviceRows.forEach(r => {
-    const full = normalizeName(`${r.firstName} ${r.lastName}`);
+    const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
     if (full && sums.hasOwnProperty(full)) { r.surveyScore = Math.round((sums[full] / counts[full]) * 100) / 100; matched++; }
   });
   showBanner('ok', `ציון סקרים נטען (ממוצע) ל-${matched} נציגים, לפי התאמת שם מלא.`);
@@ -2027,12 +2034,12 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
     const nameVal = r[0];
     const val = Number(r[2]);
     if (nameVal === null || nameVal === undefined || nameVal === '' || isNaN(val)) continue;
-    const key = normalizeName(nameVal);
+    const key = nameMatchKey(nameVal);
     sums[key] = (sums[key] || 0) + val;
   }
   let matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
   serviceRows.forEach(r => {
-    const full = normalizeName(`${r.firstName} ${r.lastName}`);
+    const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
     if (full && sums.hasOwnProperty(full)) { r.closedCalls = sums[full]; matchedService++; }
   });
   Object.keys(sums).forEach(key => {
