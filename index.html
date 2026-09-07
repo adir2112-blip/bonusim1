@@ -609,7 +609,7 @@
       <span class="toolbar-label">קבצי דוח מובמנט</span>
       <button id="uploadMvControlBtn" title="עמודות: A=ת&quot;ז, D=% עמידה בבקרה">ציון בקרה</button>
       <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, C=שיחות נענות, D=שיחות יוצאות">שיחות טלפוניות</button>
+      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, D=שיחות נענות, F=שיחות יוצאות">שיחות טלפוניות</button>
       <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
     </div>
     <div class="divider-v"></div>
@@ -2132,8 +2132,8 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
     const r = data[i];
     if (!r) continue;
     const nameVal = r[1]; // column B
-    const inc = Number(r[2]); // column C - שיחות נענות
-    const out = Number(r[3]); // column D - שיחות יוצאות
+    const inc = Number(r[3]); // column D - שיחות נענות
+    const out = Number(r[5]); // column F - שיחות יוצאות
     if (nameVal === null || nameVal === undefined || nameVal === '') continue;
     const total = (isNaN(inc) ? 0 : inc) + (isNaN(out) ? 0 : out);
     if (total === 0 && isNaN(inc) && isNaN(out)) continue;
