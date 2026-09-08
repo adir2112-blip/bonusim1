@@ -2220,7 +2220,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Fields that belong to the agent roster (carry forward between months) vs monthly data (reset each month).
-const ROSTER_FIELDS = ['empId', 'firstName', 'lastName', 'phone'];
+// isTemp ("עובד זמני") is a roster field: an employment status that stays until manually
+// changed (e.g. when employment ends), not something recalculated fresh every month.
+const ROSTER_FIELDS = ['empId', 'firstName', 'lastName', 'phone', 'isTemp'];
 
 function currentMonth() {
   const d = new Date();
@@ -2357,9 +2359,9 @@ function blankMonthlyDefaultsFor(dept) {
     surveyScore: '', workHours: null, attendanceFactor: 0,
     closedCalls: '', answeredCalls: '', specialTaskHours: '', extraTasks: ''
   };
-  // tnuat / meuhedet
+  // tnuat / meuhedet (isTemp is a roster field - see ROSTER_FIELDS - not part of monthly data)
   return {
-    isTemp: false, controlScoreRaw: '', workHours: null, attendanceFactor: 0,
+    controlScoreRaw: '', workHours: null, attendanceFactor: 0,
     callsCount: '', callsHours: '', digitalCount: ''
   };
 }
@@ -2413,25 +2415,27 @@ async function saveAllToSupabase() {
         if (selErr) throw selErr;
 
         let agentId;
+        const rosterFields = { first_name: row.firstName || '', last_name: row.lastName || '', phone: row.phone || '' };
         if (agentRows && agentRows.length > 0) {
           agentId = agentRows[0].id;
-          await sb.from('agents').update({
-            first_name: row.firstName || '',
-            last_name: row.lastName || '',
-            phone: row.phone || ''
-          }).eq('id', agentId);
+          // is_temp דורש עמודה בטבלת agents (ר' הודעה נפרדת); אם היא עוד לא קיימת, ננסה שוב בלעדיה
+          // כדי לא לתקוע את השמירה של שאר השדות.
+          const { error: updErr } = await sb.from('agents').update({ ...rosterFields, is_temp: !!row.isTemp }).eq('id', agentId);
+          if (updErr) await sb.from('agents').update(rosterFields).eq('id', agentId);
         } else {
-          const { data: inserted, error: insErr } = await sb
+          let inserted, insErr;
+          ({ data: inserted, error: insErr } = await sb
             .from('agents')
-            .insert({
-              emp_id: empId,
-              first_name: row.firstName || '',
-              last_name: row.lastName || '',
-              phone: row.phone || '',
-              department: key
-            })
+            .insert({ emp_id: empId, ...rosterFields, department: key, is_temp: !!row.isTemp })
             .select('id')
-            .single();
+            .single());
+          if (insErr) {
+            ({ data: inserted, error: insErr } = await sb
+              .from('agents')
+              .insert({ emp_id: empId, ...rosterFields, department: key })
+              .select('id')
+              .single());
+          }
           if (insErr) throw insErr;
           agentId = inserted.id;
         }
@@ -2488,7 +2492,8 @@ async function loadMonth(month) {
         firstName: a.first_name || '',
         lastName: a.last_name || '',
         phone: a.phone || '',
-        ...monthly
+        ...monthly,
+        isTemp: !!a.is_temp // roster field - overrides any stale isTemp left in old monthly data
       };
       byDept[a.department].push(row);
     });
@@ -2603,6 +2608,7 @@ async function createNewMonth(targetMonth) {
     if (!byDept.hasOwnProperty(a.department)) return;
     byDept[a.department].push({
       id: uid(), empId: a.emp_id, firstName: a.first_name || '', lastName: a.last_name || '', phone: a.phone || '',
+      isTemp: !!a.is_temp,
       ...blankMonthlyDefaultsFor(a.department)
     });
   });
