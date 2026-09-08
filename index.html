@@ -1440,7 +1440,7 @@ function renderServiceCalcOnly() {
   document.getElementById('serviceTotalBonus').textContent = fmt(totalBonus, 0) + ' ₪';
 }
 
-/* ================= MOVEMENT (תנועת + מאוחדת) — generic engine ================= */
+/* ================= MOVEMENT (מובמנט + מאוחדת) — generic engine ================= */
 function makeMovementRow() {
   return {
     id: uid(), empId: '', lastName: '', firstName: '', phone: '',
@@ -2044,7 +2044,7 @@ bindFileButton('uploadHoursBtn', 'hoursInput', (data) => {
     const diag = ` (סה"כ שורות בקובץ: ${data.length}, דולגו ללא ת"ז: ${skippedNoId}, דולגו עם שעות לא תקינות: ${skippedBadHours}, דולגו כי עמודה G אינה טקסט: ${skippedNotString}, שורות שעובדו: ${processedRows})`;
     showBanner('error', `לא נמצאו שורות עם שם מחלקה מתאים בעמודה G.${sample}${diag}`);
   } else {
-    showBanner('ok', `הקובץ נטען. פריפיט מכירות: ${salesResult.matched} עודכנו, ${salesResult.created} נוצרו. פריפיט שירות: ${serviceResult.matched} עודכנו, ${serviceResult.created} נוצרו. תנועת: ${tnuatResult.matched} עודכנו, ${tnuatResult.created} נוצרו. מאוחדת: ${meuhedetResult.matched} עודכנו, ${meuhedetResult.created} נוצרו.`);
+    showBanner('ok', `הקובץ נטען. פריפיט מכירות: ${salesResult.matched} עודכנו, ${salesResult.created} נוצרו. פריפיט שירות: ${serviceResult.matched} עודכנו, ${serviceResult.created} נוצרו. מובמנט: ${tnuatResult.matched} עודכנו, ${tnuatResult.created} נוצרו. מאוחדת: ${meuhedetResult.matched} עודכנו, ${meuhedetResult.created} נוצרו.`);
   }
 
   renderSales();
@@ -2100,7 +2100,7 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
     if (tnuat.setByFullName(key, 'digitalCount', sums[key])) matchedTnuat++;
     if (meuhedet.setByFullName(key, 'digitalCount', sums[key])) matchedMeuhedet++;
   });
-  showBanner('ok', `הקובץ נטען לפי התאמת שם מלא. פריפיט שירות (פניות שנסגרו): ${matchedService} נציגים. תנועת (דיגיטל): ${matchedTnuat} נציגים. מאוחדת (דיגיטל): ${matchedMeuhedet} נציגים.`);
+  showBanner('ok', `הקובץ נטען לפי התאמת שם מלא. פריפיט שירות (פניות שנסגרו): ${matchedService} נציגים. מובמנט (דיגיטל): ${matchedTnuat} נציגים. מאוחדת (דיגיטל): ${matchedMeuhedet} נציגים.`);
   renderServiceCalcOnly();
   tnuat.refresh(); meuhedet.refresh();
   if (matchedService > 0 || matchedTnuat > 0 || matchedMeuhedet > 0) markUploaded('calls');
@@ -2174,7 +2174,7 @@ bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
     if (tnuat.setByEmpId(key, 'controlScoreRaw', sums[key])) matchedT++;
     if (meuhedet.setByEmpId(key, 'controlScoreRaw', sums[key])) matchedM++;
   });
-  showBanner('ok', `ציון בקרה נטען. תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  showBanner('ok', `ציון בקרה נטען. מובמנט: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_control');
   scheduleSave();
@@ -2205,7 +2205,7 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
     tnuat.setByFullName(key, 'callsHours', hoursSums[key]);
     meuhedet.setByFullName(key, 'callsHours', hoursSums[key]);
   });
-  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). מובמנט: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
   scheduleSave();
@@ -2303,7 +2303,7 @@ async function saveMonthWorkDays(month, days) {
   }
 }
 
-// יעדי הפריון (שיחות/דיגיטל) לחישוב בונוס תנועת/מאוחדת - משתנים מדי חודש בקובץ השכר.
+// יעדי הפריון (שיחות/דיגיטל) לחישוב בונוס מובמנט/מאוחדת - משתנים מדי חודש בקובץ השכר.
 // דורש עמודות calls_target ו-digital_target בטבלת month_settings (numeric, nullable). אם הן
 // עוד לא קיימות בבסיס הנתונים, נופלים בחזרה לברירת המחדל בלי לשבור את הטעינה.
 let monthMovementTargetsCache = {};
