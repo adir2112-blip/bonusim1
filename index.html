@@ -257,6 +257,8 @@
   #dashExceptionsTable tbody td, #usersTable tbody td, #msgTable tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   #dashExceptionsTable tbody tr.exception-zero { background: var(--danger-bg); }
   .movement-mixed-row { background: #F0F0F0 !important; }
+  .zero-metric { background: var(--danger-bg); color: var(--danger-text); font-weight: 700; border-radius: 4px; }
+  .movement-temp-row { opacity: 0.6; }
   .msg-status-badge {
     display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
   }
@@ -609,8 +611,16 @@
       <span class="toolbar-label">קבצי דוח מובמנט</span>
       <button id="uploadMvControlBtn" title="עמודות: A=ת&quot;ז, D=% עמידה בבקרה">ציון בקרה</button>
       <input type="file" id="mvControlInput" accept=".xlsx,.xls,.csv" style="display:none" />
-      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, D=שיחות נענות, F=שיחות יוצאות">שיחות טלפוניות</button>
+      <button id="uploadMvCallsBtn" title="עמודות: B=שם מלא, D=שיחות נענות, F=שיחות יוצאות, S=שעות חיבור">שיחות טלפוניות</button>
       <input type="file" id="mvCallsInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      <div class="field">
+        <label for="mvCallsTarget" title="יעד פריון שיחות לשעה (מתעדכן מדי חודש בקובץ השכר)">יעד שיחות לשעה</label>
+        <input type="number" id="mvCallsTarget" value="8.1" step="0.1" />
+      </div>
+      <div class="field">
+        <label for="mvDigitalTarget" title="יעד פריון דיגיטל לשעה (מתעדכן מדי חודש בקובץ השכר)">יעד דיגיטל לשעה</label>
+        <input type="number" id="mvDigitalTarget" value="15" step="0.5" />
+      </div>
     </div>
     <div class="divider-v"></div>
     <div class="toolbar-group">
@@ -1247,6 +1257,9 @@ function fullStandard(workDaysOverride) {
   const wd = workDaysOverride !== undefined && workDaysOverride !== null ? workDaysOverride : workDays;
   return wd * hoursPerDay;
 }
+// יעדי פריון לשעה למובמנט/מאוחדת - ניתנים לעדכון מדי חודש (ר' loadMonthMovementTargets)
+let movementCallsTarget = 8.1;
+let movementDigitalTarget = 15;
 
 /* ================= GENERIC SCORE TIER FUNCTIONS ================= */
 function surveyScore(d) {
@@ -1287,6 +1300,15 @@ function pctTierScore5(pct) {
   if (pct < 0.93) return 2;
   if (pct < 0.97) return 3;
   if (pct < 1.0) return 4;
+  return 5;
+}
+// Movement hours-worked score: absolute hour tiers (matches payroll file), 0-5 scale
+function hoursScore5(hours) {
+  if (hours < 110) return 0;
+  if (hours < 120) return 1;
+  if (hours < 130) return 2;
+  if (hours < 140) return 3;
+  if (hours < 150) return 4;
   return 5;
 }
 
@@ -1422,35 +1444,48 @@ function renderServiceCalcOnly() {
 function makeMovementRow() {
   return {
     id: uid(), empId: '', lastName: '', firstName: '', phone: '',
+    isTemp: false, // עובד זמני - לא מקבל בונוס בכלל
     controlScoreRaw: '', // raw % (e.g. 0.8 = 80%), locked from file
     workHours: null, attendanceFactor: 0,
     callsCount: '', // locked from file (incoming+outgoing sum)
+    callsHours: '', // locked from file (phone connection/login hours - column S)
     digitalCount: '' // locked from file
   };
 }
-function computeMovementRow(r, workDaysOverride) {
-  const fullStd = fullStandard(workDaysOverride);
-  const attendanceFactor = Number(r.attendanceFactor) || 0;
-  const stdAfterFactor = fullStd - attendanceFactor;
+function computeMovementRow(r) {
   const workHours = Number(r.workHours) || 0;
-  const attendancePct = stdAfterFactor > 0 ? workHours / stdAfterFactor : 0;
-  const sAttendance = attendanceScore(attendancePct);
+
+  // Hours-worked score uses absolute hour tiers (matches payroll file), not a ratio to a
+  // global standard. attendanceFactor = hours added back manually (e.g. approved reduced
+  // hours), mirroring the payroll model's "hours removed at company's request".
+  const attendanceFactor = Number(r.attendanceFactor) || 0;
+  const hoursForScore = workHours + attendanceFactor;
+  const sAttendance5 = hoursScore5(hoursForScore);
+  const sAttendance = sAttendance5 / 5;
 
   const controlRaw = Number(r.controlScoreRaw) || 0;
   const sControl5 = controlScore5(controlRaw);
   const sControl = sControl5 / 5;
 
+  // Calls hours = actual phone connection/login time (from file). Digital hours = the
+  // remaining work hours after calls, so a "combo" agent's hours aren't double-counted.
+  // Note: distinguish "no data uploaded" (fall back to work hours) from "uploaded data is
+  // exactly 0" (a real 0 - e.g. no phone connection at all - must stay 0, not fall back).
+  const hasCallsHoursData = r.callsHours !== '' && r.callsHours !== null && r.callsHours !== undefined;
+  const callsHours = hasCallsHoursData ? Number(r.callsHours) : workHours;
+
   const hasCalls = r.callsCount !== '' && r.callsCount !== null && r.callsCount !== undefined && Number(r.callsCount) > 0;
   const callsCount = Number(r.callsCount) || 0;
-  const callsPerHour = workHours > 0 ? callsCount / workHours : 0;
-  const callsPctOfTarget = callsPerHour / 8;
+  const callsPerHour = callsHours > 0 ? callsCount / callsHours : 0;
+  const callsPctOfTarget = movementCallsTarget > 0 ? callsPerHour / movementCallsTarget : 0;
   const sCalls5 = pctTierScore5(callsPctOfTarget);
   const sCalls = sCalls5 / 5;
 
   const hasDigital = r.digitalCount !== '' && r.digitalCount !== null && r.digitalCount !== undefined && Number(r.digitalCount) > 0;
   const digitalCount = Number(r.digitalCount) || 0;
-  const digitalPerHour = workHours > 0 ? digitalCount / workHours : 0;
-  const digitalPctOfTarget = digitalPerHour / 15;
+  const digitalHours = hasDigital ? (hasCallsHoursData ? Math.max(workHours - callsHours, 0) : workHours) : 0;
+  const digitalPerHour = digitalHours > 0 ? digitalCount / digitalHours : 0;
+  const digitalPctOfTarget = movementDigitalTarget > 0 ? digitalPerHour / movementDigitalTarget : 0;
   const sDigital5 = pctTierScore5(digitalPctOfTarget);
   const sDigital = sDigital5 / 5;
 
@@ -1463,9 +1498,10 @@ function computeMovementRow(r, workDaysOverride) {
     weighted = 0.15 * sAttendance + 0.45 * sControl + 0.4 * sCalls;
   }
   const bonusPerHour = 5 * weighted;
-  const totalBonus = bonusPerHour * workHours;
+  const isTemp = !!r.isTemp;
+  const totalBonus = isTemp ? 0 : bonusPerHour * workHours;
 
-  return { fullStd, stdAfterFactor, attendancePct, sAttendance, sControl5, sControl, hasCalls, callsPerHour, sCalls, hasDigital, digitalPerHour, sDigital, weighted, bonusPerHour, totalBonus };
+  return { hoursForScore, sAttendance5, sAttendance, sControl5, sControl, hasCalls, callsPerHour, sCalls5, sCalls, hasDigital, digitalPerHour, sDigital5, sDigital, weighted, bonusPerHour, isTemp, totalBonus };
 }
 function movementRowHTML(r) {
   return `
@@ -1473,13 +1509,12 @@ function movementRowHTML(r) {
     <td><input type="text" value="${r.lastName}" data-id="${r.id}" data-field="lastName" /></td>
     <td><input type="text" value="${r.firstName}" data-id="${r.id}" data-field="firstName" /></td>
     <td><input type="text" value="${r.phone || ''}" data-id="${r.id}" data-field="phone" placeholder="050-0000000" dir="ltr" /></td>
-    <td class="col-divider num muted" data-cell="controlScoreRaw">${r.controlScoreRaw === '' || r.controlScoreRaw == null ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%'}</td>
+    <td class="col-divider" style="text-align:center"><input type="checkbox" ${r.isTemp ? 'checked' : ''} data-id="${r.id}" data-field="isTemp" title="עובד זמני - לא יקבל בונוס" /></td>
+    <td class="num muted" data-cell="controlScoreRaw">${r.controlScoreRaw === '' || r.controlScoreRaw == null ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%'}</td>
     <td class="num muted" data-cell="sControl"></td>
     <td class="num muted col-divider" data-cell="workHours">${r.workHours == null ? '—' : fmt(r.workHours, 2)}</td>
-    <td class="num muted" data-cell="fullStd"></td>
-    <td><input type="number" value="${r.attendanceFactor}" data-id="${r.id}" data-field="attendanceFactor" step="1" /></td>
-    <td class="num muted" data-cell="stdAfterFactor"></td>
-    <td class="num muted" data-cell="attendancePct"></td>
+    <td><input type="number" value="${r.attendanceFactor}" data-id="${r.id}" data-field="attendanceFactor" step="1" title="שעות שמתווספות לשעות העבודה בפועל לצורך ציון שעות עבודה (למשל אישור הפחתת שעות)" /></td>
+    <td class="num muted" data-cell="hoursForScore"></td>
     <td class="num muted" data-cell="sAttendance"></td>
     <td class="col-divider num muted" data-cell="callsCount">${r.callsCount === '' || r.callsCount == null ? '—' : fmt(r.callsCount, 2)}</td>
     <td class="num muted" data-cell="callsPerHour"></td>
@@ -1500,14 +1535,13 @@ const movementHeaderHTML = `
       <th>שם משפחה</th>
       <th>שם פרטי</th>
       <th>טלפון</th>
-      <th class="col-divider">% עמידה בקרה (נטען מקובץ)</th>
+      <th class="col-divider">עובד זמני</th>
+      <th>% עמידה בקרה (נטען מקובץ)</th>
       <th>ציון מדד בקרות</th>
       <th class="col-divider">שעות עבודה</th>
-      <th>תקן מלא</th>
-      <th>פקטור נוכחות</th>
-      <th>תקן לאחר פקטור</th>
-      <th>% נוכחות</th>
-      <th>ציון מדד נוכחות</th>
+      <th>שעות נוספות (ידני)</th>
+      <th>שעות לחישוב ציון</th>
+      <th>ציון מדד שעות עבודה</th>
       <th class="col-divider">כמות שיחות (נטען מקובץ)</th>
       <th>שיחות לשעה</th>
       <th>ציון מדד שיחות</th>
@@ -1568,22 +1602,29 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
       const tr = document.querySelector(`#${tableId}Tbody tr[data-row-id="${r.id}"]`);
       if (!tr) return;
       tr.querySelector('[data-cell="controlScoreRaw"]').textContent = (r.controlScoreRaw === '' || r.controlScoreRaw == null) ? '—' : fmt(r.controlScoreRaw * 100, 1) + '%';
-      tr.querySelector('[data-cell="sControl"]').textContent = fmt(c.sControl * 100, 0) + '%';
+      const sControlCell = tr.querySelector('[data-cell="sControl"]');
+      sControlCell.textContent = fmt(c.sControl * 100, 0) + '%';
+      sControlCell.classList.toggle('zero-metric', c.sControl5 === 0);
       tr.querySelector('[data-cell="workHours"]').textContent = r.workHours == null ? '—' : fmt(r.workHours, 2);
-      tr.querySelector('[data-cell="fullStd"]').textContent = fmt(c.fullStd, 1);
-      tr.querySelector('[data-cell="stdAfterFactor"]').textContent = fmt(c.stdAfterFactor, 1);
-      tr.querySelector('[data-cell="attendancePct"]').textContent = fmt(c.attendancePct * 100, 1) + '%';
-      tr.querySelector('[data-cell="sAttendance"]').textContent = fmt(c.sAttendance * 100, 0) + '%';
+      tr.querySelector('[data-cell="hoursForScore"]').textContent = fmt(c.hoursForScore, 1);
+      const sAttendanceCell = tr.querySelector('[data-cell="sAttendance"]');
+      sAttendanceCell.textContent = fmt(c.sAttendance * 100, 0) + '%';
+      sAttendanceCell.classList.toggle('zero-metric', c.sAttendance5 === 0);
       tr.querySelector('[data-cell="callsCount"]').textContent = (r.callsCount === '' || r.callsCount == null) ? '—' : fmt(r.callsCount, 2);
       tr.querySelector('[data-cell="callsPerHour"]').textContent = c.hasCalls ? fmt(c.callsPerHour, 2) : '—';
-      tr.querySelector('[data-cell="sCalls"]').textContent = c.hasCalls ? (fmt(c.sCalls * 100, 0) + '%') : '—';
+      const sCallsCell = tr.querySelector('[data-cell="sCalls"]');
+      sCallsCell.textContent = c.hasCalls ? (fmt(c.sCalls * 100, 0) + '%') : '—';
+      sCallsCell.classList.toggle('zero-metric', c.hasCalls && c.sCalls5 === 0);
       tr.querySelector('[data-cell="digitalCount"]').textContent = (r.digitalCount === '' || r.digitalCount == null) ? '—' : fmt(r.digitalCount, 2);
       tr.querySelector('[data-cell="digitalPerHour"]').textContent = c.hasDigital ? fmt(c.digitalPerHour, 2) : '—';
-      tr.querySelector('[data-cell="sDigital"]').textContent = c.hasDigital ? (fmt(c.sDigital * 100, 0) + '%') : '—';
+      const sDigitalCell = tr.querySelector('[data-cell="sDigital"]');
+      sDigitalCell.textContent = c.hasDigital ? (fmt(c.sDigital * 100, 0) + '%') : '—';
+      sDigitalCell.classList.toggle('zero-metric', c.hasDigital && c.sDigital5 === 0);
       tr.querySelector('[data-cell="weighted"]').textContent = fmt(c.weighted * 100, 1) + '%';
       tr.querySelector('[data-cell="bonusPerHour"]').textContent = fmt(c.bonusPerHour, 2) + ' ₪';
       tr.querySelector('[data-cell="totalBonus"]').textContent = fmt(c.totalBonus, 0) + ' ₪';
       tr.classList.toggle('movement-mixed-row', !!(c.hasCalls && c.hasDigital));
+      tr.classList.toggle('movement-temp-row', c.isTemp);
     });
     document.getElementById(totalAgentsId).textContent = rows.length;
     document.getElementById(totalBonusId).textContent = fmt(totalBonus, 0) + ' ₪';
@@ -1629,7 +1670,7 @@ function bindRowEvents(tbody, updateFn, removeFn) {
   tbody.querySelectorAll('input').forEach(input => {
     input.addEventListener('input', (e) => {
       const { id, field } = e.target.dataset;
-      let value = e.target.value;
+      let value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       if (field === 'surveyScore') {
         value = value.replace(/(\.\d{2})\d+/, '$1');
         e.target.value = value;
@@ -1792,6 +1833,19 @@ document.getElementById('hoursPerDay').addEventListener('input', (e) => {
   hoursPerDay = Number(e.target.value) || 0;
   renderServiceCalcOnly(); tnuat.refresh(); meuhedet.refresh();
   document.getElementById('fullStandard').textContent = fmt(fullStandard(), 1);
+});
+let mvTargetSaveTimer = null;
+document.getElementById('mvCallsTarget').addEventListener('input', (e) => {
+  movementCallsTarget = Number(e.target.value) || 0;
+  tnuat.refresh(); meuhedet.refresh();
+  clearTimeout(mvTargetSaveTimer);
+  mvTargetSaveTimer = setTimeout(() => saveMonthMovementTargets(activeMonth, movementCallsTarget, movementDigitalTarget), 600);
+});
+document.getElementById('mvDigitalTarget').addEventListener('input', (e) => {
+  movementDigitalTarget = Number(e.target.value) || 0;
+  tnuat.refresh(); meuhedet.refresh();
+  clearTimeout(mvTargetSaveTimer);
+  mvTargetSaveTimer = setTimeout(() => saveMonthMovementTargets(activeMonth, movementCallsTarget, movementDigitalTarget), 600);
 });
 
 /* ================= FILE UPLOADS: PERIPHATE ================= */
@@ -2127,25 +2181,31 @@ bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
 });
 
 bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
-  const sums = {};
+  const sums = {}, hoursSums = {};
   for (let i = 0; i < data.length; i++) {
     const r = data[i];
     if (!r) continue;
     const nameVal = r[1]; // column B
     const inc = Number(r[3]); // column D - שיחות נענות
     const out = Number(r[5]); // column F - שיחות יוצאות
+    const connFrac = Number(r[18]); // column S - שעות חיבור (שבריר יום, יוכפל ב-24)
     if (nameVal === null || nameVal === undefined || nameVal === '') continue;
     const total = (isNaN(inc) ? 0 : inc) + (isNaN(out) ? 0 : out);
-    if (total === 0 && isNaN(inc) && isNaN(out)) continue;
+    if (total === 0 && isNaN(inc) && isNaN(out) && isNaN(connFrac)) continue;
     const key = normalizeName(nameVal);
     sums[key] = (sums[key] || 0) + total;
+    hoursSums[key] = (hoursSums[key] || 0) + (isNaN(connFrac) ? 0 : connFrac * 24);
   }
   let matchedT = 0, matchedM = 0;
   Object.keys(sums).forEach(key => {
     if (tnuat.setByFullName(key, 'callsCount', sums[key])) matchedT++;
     if (meuhedet.setByFullName(key, 'callsCount', sums[key])) matchedM++;
   });
-  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
+  Object.keys(hoursSums).forEach(key => {
+    tnuat.setByFullName(key, 'callsHours', hoursSums[key]);
+    meuhedet.setByFullName(key, 'callsHours', hoursSums[key]);
+  });
+  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). תנועת: ${matchedT} נציגים. מאוחדת: ${matchedM} נציגים.`);
   tnuat.refresh(); meuhedet.refresh();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
   scheduleSave();
@@ -2243,6 +2303,38 @@ async function saveMonthWorkDays(month, days) {
   }
 }
 
+// יעדי הפריון (שיחות/דיגיטל) לחישוב בונוס תנועת/מאוחדת - משתנים מדי חודש בקובץ השכר.
+// דורש עמודות calls_target ו-digital_target בטבלת month_settings (numeric, nullable). אם הן
+// עוד לא קיימות בבסיס הנתונים, נופלים בחזרה לברירת המחדל בלי לשבור את הטעינה.
+let monthMovementTargetsCache = {};
+async function loadMonthMovementTargets(month) {
+  if (monthMovementTargetsCache.hasOwnProperty(month)) return monthMovementTargetsCache[month];
+  const fallback = { callsTarget: 8.1, digitalTarget: 15 };
+  try {
+    const { data, error } = await sb.from('month_settings').select('calls_target, digital_target').eq('month', month).maybeSingle();
+    if (error) throw error;
+    const result = {
+      callsTarget: (data && data.calls_target != null) ? data.calls_target : fallback.callsTarget,
+      digitalTarget: (data && data.digital_target != null) ? data.digital_target : fallback.digitalTarget,
+    };
+    monthMovementTargetsCache[month] = result;
+    return result;
+  } catch (err) {
+    console.error('loadMonthMovementTargets (ייתכן שחסרות עמודות calls_target/digital_target בטבלת month_settings):', err);
+    return fallback;
+  }
+}
+async function saveMonthMovementTargets(month, callsTarget, digitalTarget) {
+  try {
+    await sb.from('month_settings').upsert({ month, calls_target: callsTarget, digital_target: digitalTarget, updated_at: new Date().toISOString() }, { onConflict: 'month' });
+    monthMovementTargetsCache[month] = { callsTarget, digitalTarget };
+    return true;
+  } catch (err) {
+    console.error('saveMonthMovementTargets (ייתכן שחסרות עמודות calls_target/digital_target בטבלת month_settings):', err);
+    return false;
+  }
+}
+
 let isLoadingMonth = false;
 let saveTimer = null;
 
@@ -2267,8 +2359,8 @@ function blankMonthlyDefaultsFor(dept) {
   };
   // tnuat / meuhedet
   return {
-    controlScoreRaw: '', workHours: null, attendanceFactor: 0,
-    callsCount: '', digitalCount: ''
+    isTemp: false, controlScoreRaw: '', workHours: null, attendanceFactor: 0,
+    callsCount: '', callsHours: '', digitalCount: ''
   };
 }
 
@@ -2366,6 +2458,12 @@ async function loadMonth(month) {
   try {
     workDays = await loadMonthWorkDays(month);
     document.getElementById('workDays').value = workDays;
+
+    const mvTargets = await loadMonthMovementTargets(month);
+    movementCallsTarget = mvTargets.callsTarget;
+    movementDigitalTarget = mvTargets.digitalTarget;
+    document.getElementById('mvCallsTarget').value = movementCallsTarget;
+    document.getElementById('mvDigitalTarget').value = movementDigitalTarget;
 
     const { data: agents, error: agentsErr } = await sb.from('agents').select('*');
     if (agentsErr) throw agentsErr;
@@ -2713,17 +2811,17 @@ function computeBonusForRow(dept, row, workDaysOverride) {
     };
   }
   // tnuat / meuhedet
-  const c = computeMovementRow(row, workDaysOverride);
+  const c = computeMovementRow(row);
   const components = {
     'בקרות': c.sControl * 100,
-    'נוכחות': c.sAttendance * 100,
+    'שעות עבודה': c.sAttendance * 100,
   };
   if (c.hasCalls) components['שיחות'] = c.sCalls * 100;
   if (c.hasDigital) components['דיגיטל'] = c.sDigital * 100;
   const raw = {
     '% עמידה בקרה': (Number(row.controlScoreRaw) || 0) * 100,
     'שעות עבודה': Number(row.workHours) || 0,
-    '% נוכחות': c.attendancePct * 100,
+    'שעות לחישוב ציון': c.hoursForScore,
   };
   if (c.hasCalls) raw['שיחות לשעה'] = c.callsPerHour || 0;
   if (c.hasDigital) raw['דיגיטל לשעה'] = c.digitalPerHour || 0;
