@@ -179,6 +179,8 @@
   .sales-theme thead th { background: #F5F1E9; border-bottom-color: var(--accent-sales); }
   .service-theme thead th { background: #F0F3EF; border-bottom-color: var(--accent-service); }
   .movement-theme thead th { background: #EEF2F6; border-bottom-color: var(--accent-movement); }
+  .sortable-col { cursor: pointer; user-select: none; transition: color 0.15s; }
+  .sortable-col:hover { color: var(--text); text-decoration: underline; }
   tbody td {
     padding: 6px 7px;
     border-bottom: 1px solid var(--border);
@@ -774,7 +776,7 @@
                 <th>ממוצע פניות לשעה</th>
                 <th>ציון מדד פניות לשעה</th>
                 <th class="col-divider">ציון משוקלל</th>
-                <th>בונוס לשעת עבודה</th>
+                <th class="sortable-col" id="serviceSortBonusTh" title="לחץ למיון לפי בונוס לשעה (מהגדול לקטן)">בונוס לשעת עבודה ▾</th>
                 <th>סה"כ בונוס</th>
                 <th></th>
               </tr>
@@ -1132,8 +1134,11 @@ function normalizeName(s) {
   return String(s || '').trim().replace(/\s+/g, ' ');
 }
 // Order-independent key for matching full names between systems (e.g. "כהן איתמר" vs "איתמר כהן").
+// Also collapses doubled י/ו (כתיב מלא/חסר, e.g. "פהיימי" vs "פהימי") so common Hebrew
+// spelling variants between systems still match.
 function nameMatchKey(s) {
-  return normalizeName(s).split(' ').filter(Boolean).sort().join(' ');
+  const collapsed = normalizeName(s).replace(/([יו])\1+/g, '$1');
+  return collapsed.split(' ').filter(Boolean).sort().join(' ');
 }
 function normalizeDept(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').replace(/[\u2010-\u2015\u2212]/g, '-');
@@ -1589,7 +1594,7 @@ const movementHeaderHTML = `
       <th>דיגיטל לשעה</th>
       <th>ציון מדד דיגיטל</th>
       <th class="col-divider">ציון משוקלל</th>
-      <th>בונוס לשעת עבודה</th>
+      <th class="sortable-col" data-sort="bonusPerHour" title="לחץ למיון לפי בונוס לשעה (מהגדול לקטן)">בונוס לשעת עבודה ▾</th>
       <th>סה"כ בונוס</th>
       <th></th>
     </tr>
@@ -1621,6 +1626,10 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
     renderCalcOnly();
     scheduleSave();
   }
+  function sortByBonusDesc() {
+    rows.sort((a, b) => computeMovementRow(b).bonusPerHour - computeMovementRow(a).bonusPerHour);
+    render();
+  }
   function render() {
     const table = document.getElementById(tableId);
     table.innerHTML = movementHeaderHTML + '<tbody id="' + tableId + 'Tbody"></tbody>';
@@ -1632,6 +1641,8 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
       tbody.appendChild(tr);
     });
     bindRowEvents(tbody, update, remove);
+    const sortTh = table.querySelector('[data-sort="bonusPerHour"]');
+    if (sortTh) sortTh.addEventListener('click', sortByBonusDesc);
     renderCalcOnly();
   }
   function renderCalcOnly() {
@@ -1725,6 +1736,10 @@ function bindRowEvents(tbody, updateFn, removeFn) {
 
 document.getElementById('addSalesRowBtn').addEventListener('click', addSalesRow);
 document.getElementById('addServiceRowBtn').addEventListener('click', addServiceRow);
+document.getElementById('serviceSortBonusTh').addEventListener('click', () => {
+  serviceRows.sort((a, b) => computeServiceRow(b).bonusPerHour - computeServiceRow(a).bonusPerHour);
+  renderService();
+});
 function scorePillHTML(fraction) {
   const cls = fraction <= 0 ? 'bad' : fraction < 0.8 ? 'mid' : 'good';
   return `<span class="score-pill ${cls}">${fmt(fraction * 100, 0)}%</span>`;
