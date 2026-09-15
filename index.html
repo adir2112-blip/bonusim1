@@ -530,6 +530,7 @@
   .refl-view-btn { font-size: 12px; padding: 5px 12px; }
   .refl-approved { color: var(--success-text); font-weight: 600; }
   .refl-pending { color: var(--text-muted); }
+  .refl-disputed { color: var(--leave-text); font-weight: 600; }
   @media print {
     .summary-remove-col { display: none !important; }
     .summary-modal-header, .summary-print-btn, .summary-modal-close { display: none !important; }
@@ -4308,16 +4309,24 @@ async function renderReflectionApprovalTable(batchId) {
   const tbody = document.getElementById('reflectionApprovalTbody');
   tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
   try {
-    const { data, error } = await sb.from('reflection_employees').select('full_name, department, sent_at, approved_at').eq('batch_id', batchId).order('full_name');
+    const { data, error } = await sb.from('reflection_employees').select('full_name, department, sent_at, approved_at, disputed_at, dispute_note').eq('batch_id', batchId).order('full_name');
     if (error) throw error;
     tbody.innerHTML = '';
     (data || []).forEach(r => {
       const tr = document.createElement('tr');
+      let statusHtml;
+      if (r.approved_at) {
+        statusHtml = `<span class="refl-approved">אושר ב-${new Date(r.approved_at).toLocaleDateString('he-IL')}</span>`;
+      } else if (r.disputed_at) {
+        statusHtml = `<span class="refl-disputed" title="${(r.dispute_note || '').replace(/"/g, '&quot;')}">⚠️ דווחה טעות ב-${new Date(r.disputed_at).toLocaleDateString('he-IL')}: ${r.dispute_note || ''}</span>`;
+      } else {
+        statusHtml = '<span class="refl-pending">טרם אושר</span>';
+      }
       tr.innerHTML = `
         <td>${r.full_name}</td>
         <td class="muted">${r.department}</td>
         <td class="num">${r.sent_at ? new Date(r.sent_at).toLocaleString('he-IL') : '—'}</td>
-        <td>${r.approved_at ? `<span class="refl-approved">אושר ב-${new Date(r.approved_at).toLocaleDateString('he-IL')}</span>` : '<span class="refl-pending">טרם אושר</span>'}</td>
+        <td>${statusHtml}</td>
       `;
       tbody.appendChild(tr);
     });

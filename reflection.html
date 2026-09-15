@@ -115,15 +115,24 @@
 
   .approve-box {
     margin-top: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 18px 20px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 20px 22px; box-shadow: var(--shadow-sm);
   }
-  .approve-box p { margin: 0; font-size: 13.5px; color: var(--text-muted); max-width: 480px; line-height: 1.6; }
-  #approveBtn {
-    padding: 11px 22px; font-size: 14px; font-weight: 600; background: var(--success-text);
-    color: #fff; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  .approve-box p.approve-lead { margin: 0 0 16px; font-size: 13.5px; color: var(--text-muted); line-height: 1.6; }
+  .approve-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #approveBtn, #disputeBtn, #sendDisputeBtn {
+    padding: 11px 20px; font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; white-space: nowrap; border: none;
   }
-  #approveBtn:disabled { opacity: .6; cursor: default; }
+  #approveBtn { background: var(--success-text); color: #fff; }
+  #disputeBtn { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong) !important; }
+  #approveBtn:disabled, #disputeBtn:disabled, #sendDisputeBtn:disabled { opacity: .6; cursor: default; }
   .approved-flag { color: var(--success-text); font-weight: 700; font-size: 14px; }
+  .disputed-flag { color: var(--leave-text); font-weight: 700; font-size: 14px; display: block; margin-bottom: 4px; }
+  .dispute-form textarea {
+    width: 100%; min-height: 80px; padding: 10px; font-size: 13.5px; font-family: inherit;
+    border: 1px solid var(--border); border-radius: 8px; resize: vertical; margin-bottom: 10px;
+  }
+  .dispute-form textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,107,176,0.15); }
+  #sendDisputeBtn { background: var(--leave-text); color: #fff; }
 
   .state-msg { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 14px; }
 </style>
@@ -175,8 +184,7 @@
       </div>
     </div>
 
-    <div class="approve-box">
-      <p>אם בדקת את הפרטים ואתה מאשר שהם תואמים למה שביצעת בפועל, לחץ לאישור.</p>
+    <div class="approve-box" id="approveBox">
       <div id="approveArea"></div>
     </div>
   </div>
@@ -192,6 +200,8 @@
   const token = new URLSearchParams(location.search).get('t');
   let reflectionRows = [];
   let currentApprovedAt = null;
+  let currentDisputedAt = null;
+  let currentDisputeNote = null;
 
   function fmt(n) {
     return Number(n).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -251,6 +261,8 @@
     document.getElementById('empName').textContent = first.full_name || '';
     document.getElementById('empDept').textContent = first.department || '';
     currentApprovedAt = first.approved_at || null;
+    currentDisputedAt = first.disputed_at || null;
+    currentDisputeNote = first.dispute_note || null;
 
     let workedDays = 0, leaveDays = 0, totalHours = 0;
     const tbody = document.getElementById('tbody');
@@ -289,16 +301,33 @@
 
   function renderApproveArea() {
     const area = document.getElementById('approveArea');
+
     if (currentApprovedAt) {
       const d = new Date(currentApprovedAt).toLocaleDateString('he-IL');
       area.innerHTML = `<span class="approved-flag">✓ אושר בתאריך ${d}</span>`;
       return;
     }
-    area.innerHTML = `<button id="approveBtn">אני מאשר שבדקתי את השעות</button>`;
+    if (currentDisputedAt) {
+      const d = new Date(currentDisputedAt).toLocaleDateString('he-IL');
+      area.innerHTML = `
+        <span class="disputed-flag">⚠ דווחה הערה בתאריך ${d}</span>
+        <p class="approve-lead" style="margin:0;">"${currentDisputeNote || ''}"</p>
+      `;
+      return;
+    }
+
+    area.innerHTML = `
+      <p class="approve-lead">אם בדקת את הפרטים ואתה מאשר שהם תואמים למה שביצעת בפועל, לחץ לאישור. אם יש משהו שלא נכון, לחץ "יש הערות".</p>
+      <div class="approve-actions" id="approveActions">
+        <button id="approveBtn">✓ אני מאשר שהנתונים נכונים</button>
+        <button id="disputeBtn">⚠ יש הערות</button>
+      </div>
+    `;
+
     document.getElementById('approveBtn').addEventListener('click', async (e) => {
       const pin = document.getElementById('pinInput').value.trim();
       const btn = e.target;
-      btn.disabled = true;
+      setActionsDisabled(true);
       btn.textContent = 'שולח אישור…';
       try {
         const { data, error } = await sb.rpc('confirm_reflection', { p_token: token, p_last4: pin });
@@ -307,9 +336,58 @@
         renderApproveArea();
       } catch (err) {
         console.error(err);
-        btn.disabled = false;
-        btn.textContent = 'אני מאשר שבדקתי את השעות';
+        setActionsDisabled(false);
+        btn.textContent = '✓ אני מאשר שהנתונים נכונים';
         alert('שגיאה באישור. נסה שוב.');
+      }
+    });
+
+    document.getElementById('disputeBtn').addEventListener('click', showDisputeForm);
+  }
+
+  function setActionsDisabled(disabled) {
+    const box = document.getElementById('approveActions');
+    if (!box) return;
+    box.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
+  }
+
+  function showDisputeForm() {
+    const area = document.getElementById('approveArea');
+    area.innerHTML = `
+      <div class="dispute-form">
+        <p class="approve-lead">כתוב/כתבי בקצרה מה לא נכון (למשל: "ב-15/8 הייתי בחופש ולא רשום"):</p>
+        <textarea id="disputeNoteInput" placeholder="כתוב כאן..."></textarea>
+        <div class="approve-actions">
+          <button id="sendDisputeBtn">שלח דיווח</button>
+          <button id="cancelDisputeBtn" style="background:var(--surface-2); color:var(--text); border:1px solid var(--border-strong);">ביטול</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('cancelDisputeBtn').addEventListener('click', renderApproveArea);
+    document.getElementById('sendDisputeBtn').addEventListener('click', async (e) => {
+      const note = document.getElementById('disputeNoteInput').value.trim();
+      if (!note) {
+        alert('נא לכתוב מה לא נכון לפני השליחה.');
+        return;
+      }
+      const pin = document.getElementById('pinInput').value.trim();
+      const btn = e.target;
+      btn.disabled = true;
+      document.getElementById('cancelDisputeBtn').disabled = true;
+      btn.textContent = 'שולח…';
+      try {
+        const { data, error } = await sb.rpc('report_reflection_issue', { p_token: token, p_last4: pin, p_note: note });
+        if (error || !data) throw error || new Error('report failed');
+        currentDisputedAt = new Date().toISOString();
+        currentDisputeNote = note;
+        renderApproveArea();
+        alert('יש לפנות למנהל האישי לצורך עדכון.');
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        document.getElementById('cancelDisputeBtn').disabled = false;
+        btn.textContent = 'שלח דיווח';
+        alert('שגיאה בשליחת הדיווח. נסה שוב.');
       }
     });
   }
