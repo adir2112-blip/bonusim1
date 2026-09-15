@@ -36,16 +36,51 @@
     margin: 0;
     min-height: 100vh;
     direction: rtl;
-    background:
-      radial-gradient(1200px 600px at 15% -10%, rgba(255,255,255,0.25), transparent),
-      radial-gradient(900px 700px at 100% 100%, rgba(31,78,130,0.35), transparent),
-      linear-gradient(150deg, #2A6BB0 0%, #3E7FC2 40%, #6FA8D8 75%, #BFDCEF 100%);
+    background: linear-gradient(160deg, #0F2A4A 0%, #17406E 35%, #1F4E82 65%, #2A6BB0 100%);
     background-attachment: fixed;
     transition: background 0.4s ease;
     color: var(--text);
     font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
     padding: 28px 16px 60px;
     -webkit-text-size-adjust: 100%;
+    position: relative;
+    overflow-x: hidden;
+  }
+  .bg-decor {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  }
+  .bg-orb {
+    position: absolute; border-radius: 50%; filter: blur(2px);
+    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.16), rgba(255,255,255,0.02) 70%);
+    animation: orbFloat 14s ease-in-out infinite;
+  }
+  .bg-orb.o1 { width: 260px; height: 260px; top: 8%; right: 8%; animation-duration: 16s; }
+  .bg-orb.o2 { width: 160px; height: 160px; bottom: 12%; left: 6%; animation-duration: 12s; animation-delay: -3s; }
+  .bg-orb.o3 { width: 340px; height: 340px; bottom: -10%; right: 20%; animation-duration: 20s; animation-delay: -7s; }
+  .bg-clock {
+    position: absolute; top: 50%; left: 50%; width: 640px; height: 640px;
+    transform: translate(-50%, -50%); opacity: 0.07;
+  }
+  .bg-clock .hand {
+    transform-origin: 320px 320px; animation: clockSpin 60s linear infinite;
+  }
+  .bg-check {
+    position: absolute; color: rgba(255,255,255,0.14); font-weight: 800; pointer-events: none;
+    animation: checkDrift 18s ease-in-out infinite;
+  }
+  .bg-check.c1 { font-size: 46px; top: 22%; left: 12%; animation-delay: -2s; }
+  .bg-check.c2 { font-size: 30px; bottom: 20%; right: 14%; animation-delay: -9s; }
+  @keyframes orbFloat {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-18px, 22px) scale(1.06); }
+  }
+  @keyframes clockSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes checkDrift {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-16px) rotate(-6deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bg-orb, .bg-check, .bg-clock .hand { animation: none !important; }
   }
   body.logged-in {
     background:
@@ -53,7 +88,8 @@
       radial-gradient(1100px 480px at 100% 0%, rgba(200,100,26,0.07), transparent),
       var(--bg);
   }
-  .wrap { max-width: 900px; margin: 0 auto; }
+  body.logged-in .bg-decor { display: none; }
+  .wrap { max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
   @media (max-width: 480px) {
     body { padding: 16px 10px 40px; }
   }
@@ -180,6 +216,22 @@
 </style>
 </head>
 <body>
+<div class="bg-decor">
+  <svg class="bg-clock" viewBox="0 0 640 640" fill="none">
+    <circle cx="320" cy="320" r="300" stroke="white" stroke-width="4"/>
+    <circle cx="320" cy="320" r="10" fill="white"/>
+    <line x1="320" y1="30" x2="320" y2="70" stroke="white" stroke-width="6" stroke-linecap="round"/>
+    <line x1="320" y1="570" x2="320" y2="610" stroke="white" stroke-width="6" stroke-linecap="round"/>
+    <line x1="30" y1="320" x2="70" y2="320" stroke="white" stroke-width="6" stroke-linecap="round"/>
+    <line x1="570" y1="320" x2="610" y2="320" stroke="white" stroke-width="6" stroke-linecap="round"/>
+    <line class="hand" x1="320" y1="320" x2="320" y2="90" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  </svg>
+  <div class="bg-orb o1"></div>
+  <div class="bg-orb o2"></div>
+  <div class="bg-orb o3"></div>
+  <span class="bg-check c1">✓</span>
+  <span class="bg-check c2">✓</span>
+</div>
 <div class="wrap">
 
   <div id="pinScreen" class="pin-card">
