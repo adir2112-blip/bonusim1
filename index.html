@@ -4463,7 +4463,7 @@ document.getElementById('reflectionClearAllBtn').addEventListener('click', () =>
 
 /* ================= תבניות הודעה לשיקוף שכר ================= */
 let messageTemplates = [];
-const DEFAULT_TEMPLATE_BODY = 'שלום {שם},\nמצורף קישור לאישור שעות העבודה:\n{קישור}';
+const DEFAULT_TEMPLATE_BODY = 'שלום *{שם}* 👋\n\nהנה סיכום שעות העבודה שלך לחודש הנוכחי, מוכן לצפייה ואישור.\n\n*מה כדאי לבדוק:*\n✔️ שעות הכניסה והיציאה שנרשמו\n✔️ ימי חופש/מחלה (אם יש)\n\n🔒 הקישור אישי ובתוקף ל-30 יום:\n{קישור}\n\nבברכה,\n*A.L Systems*';
 
 async function loadMessageTemplates(selectId) {
   const sel = document.getElementById('msgTemplateSelect');
