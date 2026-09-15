@@ -1262,7 +1262,9 @@
     </div>
     <div class="table-card" style="padding:16px;">
       <textarea id="msgTemplateBody" rows="5" style="width:100%; font-family:inherit; font-size:14px; padding:10px; border:1px solid var(--border); border-radius:7px; resize:vertical;" placeholder="שלום {שם},&#10;מצורף קישור לאישור שעות העבודה:&#10;{קישור}"></textarea>
-      <p class="hint" style="margin-bottom:0;">אפשר להשתמש ב-<code>{שם}</code> ו-<code>{קישור}</code> בתוכן ההודעה - הם יוחלפו אוטומטית בשם הנציג ובקישור האישי שלו בזמן השליחה.</p>
+      <p class="hint">אפשר להשתמש ב-<code>{שם}</code> ו-<code>{קישור}</code> בתוכן ההודעה - הם יוחלפו אוטומטית בשם הנציג ובקישור האישי שלו בזמן השליחה.</p>
+      <button id="msgPreviewBtn" style="margin-top:6px;">👁️ תצוגה מקדימה</button>
+      <div id="msgPreviewBox" style="display:none; margin-top:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:14px; white-space:pre-wrap; font-size:14px; line-height:1.6;"></div>
     </div>
 
     <div class="dept-toolbar" style="margin-top:20px;">
@@ -4549,6 +4551,22 @@ function buildReflectionMessage(templateBody, e, link) {
     .replaceAll('{שם}', e.firstName || e.fullName || '')
     .replaceAll('{קישור}', link);
 }
+
+document.getElementById('msgPreviewBtn').addEventListener('click', () => {
+  const box = document.getElementById('msgPreviewBox');
+  const templateBody = document.getElementById('msgTemplateBody').value || DEFAULT_TEMPLATE_BODY;
+  // מציג דוגמה על נציג נבחר אם יש, אחרת הראשון ברשימה, אחרת נציג לדוגמה
+  let sample = reflectionEmployees.find(e => reflectionSelectedIds.has(e.empId)) || reflectionEmployees[0];
+  let link;
+  if (sample && sample.token) {
+    link = `https://adir2112-blip.github.io/bonusim1/reflection.html?t=${sample.token}`;
+  } else {
+    sample = sample || { firstName: 'ישראל', fullName: 'ישראל ישראלי' };
+    link = 'https://adir2112-blip.github.io/bonusim1/reflection.html?t=דוגמה-בלבד';
+  }
+  box.textContent = buildReflectionMessage(templateBody, sample, link);
+  box.style.display = 'block';
+});
 
 document.getElementById('sendReflectionBtn').addEventListener('click', async () => {
   const toSend = reflectionEmployees.filter(e => reflectionSelectedIds.has(e.empId) && reflectionPhoneByEmpId[e.empId] && !e.sentAt && e.dbId && e.token);
