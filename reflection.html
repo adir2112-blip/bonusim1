@@ -51,10 +51,48 @@
   }
 
   .pin-card {
-    display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
-    box-shadow: var(--shadow-md); max-width: 720px; margin: 48px auto; overflow: hidden;
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; background: var(--surface); overflow: hidden;
   }
-  .pin-panel { flex: 1; min-width: 0; }
+  .pin-panel { flex: 1; min-width: 0; display: flex; align-items: center; }
+  .pin-panel-form {
+    justify-content: center; align-items: center; position: relative; overflow: hidden;
+    background:
+      radial-gradient(640px 420px at 12% -6%, rgba(42,107,176,0.14), transparent 60%),
+      radial-gradient(520px 480px at 105% 100%, rgba(200,140,26,0.10), transparent 60%),
+      linear-gradient(165deg, #FFFFFF 0%, #F7F9FC 55%, #EFF3F8 100%);
+  }
+  .pin-panel-form::before, .pin-panel-form::after {
+    content: ""; position: absolute; border-radius: 50%; filter: blur(50px); z-index: 0;
+  }
+  .pin-panel-form::before {
+    width: 320px; height: 320px; top: -120px; left: -100px;
+    background: radial-gradient(circle, rgba(42,107,176,0.16), rgba(42,107,176,0) 70%);
+  }
+  .pin-panel-form::after {
+    width: 260px; height: 260px; bottom: -90px; right: -80px;
+    background: radial-gradient(circle, rgba(200,140,26,0.14), rgba(200,140,26,0) 70%);
+  }
+  .pin-panel-form > * { position: relative; z-index: 1; width: 100%; max-width: 380px; }
+  .pin-panel-form > .pin-brand {
+    position: absolute; top: 28px; right: 32px; z-index: 1; width: auto; max-width: none;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; color: var(--accent-dark);
+  }
+  .pin-brand .pb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-bg); }
+  @media (max-width: 680px) { .pin-brand { display: none; } }
+  .pin-form-title { margin: 0 0 6px; }
+  .pin-form-title .pft-eyebrow {
+    display: block; font-size: 12px; font-weight: 800; color: var(--accent); text-transform: uppercase;
+    letter-spacing: .08em; margin: 0 0 6px;
+  }
+  .pin-form-title h1 {
+    font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -.5px; color: var(--text);
+    position: relative; display: inline-block; padding-bottom: 12px;
+  }
+  .pin-form-title h1::after {
+    content: ""; position: absolute; bottom: 0; right: 0; width: 46px; height: 4px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-dark));
+  }
   .pin-panel-info {
     position: relative; overflow: hidden;
     background: radial-gradient(1100px 700px at 70% 20%, #16305B 0%, #0C1E3C 55%, #081428 100%);
@@ -81,9 +119,10 @@
   }
   .pin-panel-form { padding: 36px 32px; display: flex; flex-direction: column; justify-content: center; }
   @media (max-width: 680px) {
-    .pin-card { flex-direction: column; max-width: 440px; margin: 20px auto; border-radius: 16px; }
+    .pin-card { flex-direction: column; overflow-y: auto; }
     .pin-panel-info, .pin-panel-form { padding: 26px 24px; }
-    .pin-panel-info { min-height: 260px; }
+    .pin-panel-info { flex: none; min-height: 42vh; }
+    .pin-panel-form { flex: none; }
     .pin-float-badge { display: none; }
   }
   .pin-header .pin-icon {
@@ -220,6 +259,11 @@
       </ul>
     </div>
     <div class="pin-panel pin-panel-form">
+      <div class="pin-brand"><span class="pb-dot"></span> A.L Systems</div>
+      <div class="pin-form-title">
+        <span class="pft-eyebrow">שיקוף שכר עבודה</span>
+        <h1>אישור שעות עבודה</h1>
+      </div>
       <p class="sub">היי! 👋 כאן תוכל/י לצפות בפירוט ימי העבודה שנרשמו עבורך החודש ולאשר שהם תואמים למה שביצעת בפועל.</p>
       <div class="pin-field">
         <label for="pinInput">🔑 להתחברות, הזן/י את <b>4 הספרות האחרונות</b> של תעודת הזהות שלך</label>
