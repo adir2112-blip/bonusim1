@@ -103,7 +103,7 @@
 
   .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); }
   .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 480px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 620px; }
   thead th {
     text-align: right; font-weight: 700; font-size: 10.5px; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: .03em; padding: 11px 12px;
@@ -111,7 +111,7 @@
   }
   tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   @media (max-width: 480px) {
-    table { min-width: 360px; font-size: 12.5px; }
+    table { min-width: 460px; font-size: 12.5px; }
     thead th, tbody td, tfoot td { padding: 8px 8px; }
   }
   tbody tr:last-child td { border-bottom: none; }
@@ -192,6 +192,8 @@
               <th>תאריך</th>
               <th>כניסה</th>
               <th>יציאה</th>
+              <th>כניסה 2</th>
+              <th>יציאה 2</th>
               <th>נוכח לשכר</th>
             </tr>
           </thead>
@@ -301,12 +303,14 @@
           <td class="num">${d}/${m}</td>
           <td class="num">${r.check_in || '—'}</td>
           <td class="num">${r.check_out || '—'}</td>
+          <td class="num">${r.check_in_2 || '—'}</td>
+          <td class="num">${r.check_out_2 || '—'}</td>
           <td>${cell}</td>
         </tr>
       `;
     }).join('');
 
-    document.getElementById('tfoot').innerHTML = `<tr><td colspan="3">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(totalHours)}</td></tr>`;
+    document.getElementById('tfoot').innerHTML = `<tr><td colspan="5">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(totalHours)}</td></tr>`;
     document.getElementById('statsRow').innerHTML = `
       <div class="stat"><p class="label">ימי עבודה בפועל</p><p class="value">${workedDays}</p></div>
       <div class="stat"><p class="label">סה״כ שעות</p><p class="value">${fmt(totalHours)}</p></div>

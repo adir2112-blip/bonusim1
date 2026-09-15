@@ -714,6 +714,8 @@
                 <th>מחלקה</th>
                 <th>כניסה</th>
                 <th>יציאה</th>
+                <th>כניסה 2</th>
+                <th>יציאה 2</th>
                 <th>נוכח לשכר</th>
               </tr>
             </thead>
@@ -4066,7 +4068,7 @@ function parseReflectionFile(data) {
       lastName: r[3] != null ? String(r[3]).trim() : '',
       firstName: r[4] != null ? String(r[4]).trim() : '',
       dept: normalizeDept(r[6] != null ? String(r[6]) : ''),
-      dateSerial, checkIn: r[12], checkOut: r[13], S, T,
+      dateSerial, checkIn: r[12], checkOut: r[13], checkIn2: r[14], checkOut2: r[15], S, T,
     });
   });
   return out;
@@ -4080,7 +4082,12 @@ function buildReflectionEmployees(parsedRows) {
     if (r.firstName) emp.firstName = r.firstName;
     if (r.lastName) emp.lastName = r.lastName;
     const kind = classifyReflectionDay(r.S, r.T);
-    emp.days.push({ date: excelSerialToISO(r.dateSerial), in: timeFracToHHMM(r.checkIn), out: timeFracToHHMM(r.checkOut), S: r.S, T: r.T, kind });
+    emp.days.push({
+      date: excelSerialToISO(r.dateSerial),
+      in: timeFracToHHMM(r.checkIn), out: timeFracToHHMM(r.checkOut),
+      in2: timeFracToHHMM(r.checkIn2), out2: timeFracToHHMM(r.checkOut2),
+      S: r.S, T: r.T, kind,
+    });
   });
   return Object.values(byEmp).map(e => {
     e.days.sort((a, b) => a.date.localeCompare(b.date));
@@ -4186,30 +4193,38 @@ function renderReflectionTable() {
 }
 
 function showReflectionDetail(empId) {
-  const e = reflectionEmployees.find(x => x.empId === empId);
-  if (!e) return;
-  document.getElementById('reflectionDetailName').textContent = e.fullName || '(ללא שם)';
-  document.getElementById('reflectionDetailDept').textContent = e.dept;
-  document.getElementById('reflectionDetailTbody').innerHTML = e.days.map(d => {
-    const [, m, dd] = d.date.split('-');
-    let sCell;
-    if (d.kind === 'worked') sCell = `<span class="num">${fmt(d.S, 2)}</span>`;
-    else if (d.kind === 'leave') sCell = `<span class="refl-day-cell"><span class="refl-badge leave">חופש / מחלה</span><span class="refl-leave-note">יש לוודא בסינריון שמוזן אישור מחלה / חופשה בתשלום</span></span>`;
-    else sCell = `<span class="refl-badge off">—</span>`;
-    return `
-      <tr>
-        <td class="num">${dd}/${m}</td>
-        <td class="num">${e.empId}</td>
-        <td>${e.fullName}</td>
-        <td class="muted">${e.dept}</td>
-        <td class="num">${d.in || '—'}</td>
-        <td class="num">${d.out || '—'}</td>
-        <td>${sCell}</td>
-      </tr>
-    `;
-  }).join('');
-  document.getElementById('reflectionDetailTfoot').innerHTML = `<tr><td colspan="6">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(e.totalHours, 2)}</td></tr>`;
-  document.getElementById('reflectionDetailOverlay').style.display = 'flex';
+  try {
+    const e = reflectionEmployees.find(x => x.empId === empId);
+    if (!e) { alert('לא נמצא נציג לתצוגה. נסה לרענן ולבחור את הדיווח מחדש.'); return; }
+    document.getElementById('reflectionDetailName').textContent = e.fullName || '(ללא שם)';
+    document.getElementById('reflectionDetailDept').textContent = e.dept;
+    document.getElementById('reflectionDetailTbody').innerHTML = (e.days || []).map(d => {
+      const parts = String(d.date || '').split('-');
+      const m = parts[1] || '--', dd = parts[2] || '--';
+      let sCell;
+      if (d.kind === 'worked') sCell = `<span class="num">${fmt(d.S, 2)}</span>`;
+      else if (d.kind === 'leave') sCell = `<span class="refl-day-cell"><span class="refl-badge leave">חופש / מחלה</span><span class="refl-leave-note">יש לוודא בסינריון שמוזן אישור מחלה / חופשה בתשלום</span></span>`;
+      else sCell = `<span class="refl-badge off">—</span>`;
+      return `
+        <tr>
+          <td class="num">${dd}/${m}</td>
+          <td class="num">${e.empId}</td>
+          <td>${e.fullName}</td>
+          <td class="muted">${e.dept}</td>
+          <td class="num">${d.in || '—'}</td>
+          <td class="num">${d.out || '—'}</td>
+          <td class="num">${d.in2 || '—'}</td>
+          <td class="num">${d.out2 || '—'}</td>
+          <td>${sCell}</td>
+        </tr>
+      `;
+    }).join('');
+    document.getElementById('reflectionDetailTfoot').innerHTML = `<tr><td colspan="8">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(e.totalHours, 2)}</td></tr>`;
+    document.getElementById('reflectionDetailOverlay').style.display = 'flex';
+  } catch (err) {
+    console.error('showReflectionDetail failed:', err);
+    alert('שגיאה בפתיחת הפירוט. פתח את קונסולת הדפדפן (F12) ותשלח לי מה כתוב שם.');
+  }
 }
 document.getElementById('closeReflectionDetailBtn').addEventListener('click', () => {
   document.getElementById('reflectionDetailOverlay').style.display = 'none';
@@ -4244,6 +4259,8 @@ async function persistReflectionBatchData(batchId) {
           work_date: d.date,
           check_in: d.in,
           check_out: d.out,
+          check_in_2: d.in2 || null,
+          check_out_2: d.out2 || null,
           hours: d.kind === 'worked' ? d.S : null,
           leave_total: d.kind === 'leave' ? d.T : null,
           kind: d.kind,
@@ -4279,7 +4296,7 @@ async function loadReflectionBatchFromDb(batchId) {
 
   reflectionEmployees = (empRows || []).map(e => {
     const days = (daysByEmp[e.id] || [])
-      .map(d => ({ date: d.work_date, in: d.check_in, out: d.check_out, S: d.hours, T: d.leave_total, kind: d.kind }))
+      .map(d => ({ date: d.work_date, in: d.check_in, out: d.check_out, in2: d.check_in_2, out2: d.check_out_2, S: d.hours, T: d.leave_total, kind: d.kind }))
       .sort((a, b) => a.date.localeCompare(b.date));
     return {
       empId: e.emp_id, fullName: e.full_name, dept: e.department,
