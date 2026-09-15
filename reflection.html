@@ -56,25 +56,49 @@
   }
   .pin-panel { flex: 1; min-width: 0; }
   .pin-panel-info {
-    background: linear-gradient(165deg, var(--accent-dark), var(--accent));
+    position: relative; overflow: hidden;
+    background: radial-gradient(1100px 700px at 70% 20%, #16305B 0%, #0C1E3C 55%, #081428 100%);
     color: #fff; padding: 36px 32px; display: flex; flex-direction: column; justify-content: center;
+  }
+  #networkCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .pin-panel-info > * { position: relative; z-index: 2; }
+  .pin-float-badge {
+    position: absolute; z-index: 2; display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16);
+    backdrop-filter: blur(6px); border-radius: 12px; padding: 9px 14px;
+    animation: badgeFloat 6s ease-in-out infinite;
+  }
+  .pin-float-badge .bi { font-size: 16px; }
+  .pin-float-badge .bt { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+  .pin-float-badge.b1 { top: 14%; left: 8%; animation-delay: -1s; }
+  .pin-float-badge.b2 { bottom: 16%; right: 6%; animation-delay: -3.2s; }
+  @keyframes badgeFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pin-float-badge { animation: none; }
   }
   .pin-panel-form { padding: 36px 32px; display: flex; flex-direction: column; justify-content: center; }
   @media (max-width: 680px) {
     .pin-card { flex-direction: column; max-width: 440px; margin: 20px auto; border-radius: 16px; }
     .pin-panel-info, .pin-panel-form { padding: 26px 24px; }
+    .pin-panel-info { min-height: 260px; }
+    .pin-float-badge { display: none; }
   }
   .pin-header .pin-icon {
-    width: 48px; height: 48px; border-radius: 13px; background: rgba(255,255,255,0.18);
+    width: 48px; height: 48px; border-radius: 13px; background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.18);
     display: flex; align-items: center; justify-content: center; font-size: 22px;
     margin-bottom: 14px;
   }
   .pin-panel-info h2 { font-size: 22px; font-weight: 800; margin: 0 0 8px; letter-spacing: -.3px; }
-  .pin-panel-info .pin-tagline { font-size: 13.5px; margin: 0; opacity: .85; line-height: 1.6; }
+  .pin-panel-info .pin-tagline { font-size: 13.5px; margin: 0; opacity: .8; line-height: 1.6; }
   .pin-feature-list { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-direction: column; gap: 13px; }
   .pin-feature-list li { display: flex; align-items: center; gap: 10px; font-size: 13.5px; line-height: 1.4; }
   .pin-feature-list .fi {
-    width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.2);
+    width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.2);
     display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; font-weight: 700;
   }
   .pin-body p.sub { font-size: 14.5px; color: var(--text-muted); margin: 0 0 22px; line-height: 1.7; }
@@ -183,6 +207,9 @@
 
   <div id="pinScreen" class="pin-card">
     <div class="pin-panel pin-panel-info">
+      <canvas id="networkCanvas"></canvas>
+      <div class="pin-float-badge b1"><span class="bi">🔒</span><span class="bt">מאובטח אישית</span></div>
+      <div class="pin-float-badge b2"><span class="bi">⏱️</span><span class="bt">בתוקף ל-30 יום</span></div>
       <div class="pin-icon">🗓️</div>
       <h2>שיקוף שעות עבודה</h2>
       <p class="pin-tagline">כל מה שצריך לדעת על החודש שלך, במקום אחד.</p>
@@ -247,6 +274,64 @@
   const SUPABASE_URL = 'https://pmsrezoyzycxgerxbtka.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtc3Jlem95enljeGdlcnhidGthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzAwMzAsImV4cCI6MjA5NzIwNjAzMH0.lo6n7u3XIHHMSrJzzvEQntrqR2Had78HYjAL8JXibeo';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // רשת נקודות מונפשת ברקע פאנל המידע - קישוט עדין, לא מפריע לקריאה.
+  (function initNetworkCanvas() {
+    const canvas = document.getElementById('networkCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let w, h, points;
+
+    function resize() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      w = canvas.width = rect.width;
+      h = canvas.height = rect.height;
+    }
+    function makePoints() {
+      const count = Math.max(16, Math.round((w * h) / 18000));
+      points = Array.from({ length: count }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.25,
+        vy: (Math.random() - 0.5) * 0.25,
+      }));
+    }
+    function step() {
+      ctx.clearRect(0, 0, w, h);
+      points.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+      });
+      for (let i = 0; i < points.length; i++) {
+        for (let j = i + 1; j < points.length; j++) {
+          const dx = points[i].x - points[j].x, dy = points[i].y - points[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150) {
+            ctx.strokeStyle = `rgba(140,180,230,${0.18 * (1 - dist / 150)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(points[i].x, points[i].y);
+            ctx.lineTo(points[j].x, points[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+      points.forEach(p => {
+        ctx.fillStyle = 'rgba(180,205,240,0.55)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (!reduceMotion) requestAnimationFrame(step);
+    }
+
+    resize();
+    makePoints();
+    step();
+    window.addEventListener('resize', () => { resize(); makePoints(); if (reduceMotion) step(); });
+  })();
 
   const token = new URLSearchParams(location.search).get('t');
   let reflectionRows = [];
