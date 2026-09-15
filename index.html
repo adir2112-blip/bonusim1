@@ -383,6 +383,25 @@
   }
 
   /* ===== Service survey/calls summary popup (presentation-ready) ===== */
+  #authGate {
+    position: fixed; inset: 0; z-index: 2000;
+    background:
+      radial-gradient(1200px 500px at 15% -10%, rgba(42,107,176,0.10), transparent),
+      radial-gradient(1200px 500px at 100% 0%, rgba(200,100,26,0.08), transparent),
+      var(--bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auth-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); padding: 32px 30px; width: 92%; max-width: 360px;
+  }
+  .auth-card h2 { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
+  .auth-card p.sub { font-size: 13px; color: var(--text-muted); margin: 0 0 22px; }
+  .auth-field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .auth-field label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+  .auth-field input { width: 100%; padding: 9px 10px; font-size: 14px; }
+  .auth-error { color: var(--danger-text); font-size: 12.5px; min-height: 16px; margin-bottom: 8px; }
+  #authLoginBtn { width: 100%; justify-content: center; padding: 10px; font-size: 14px; }
   .summary-overlay {
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(20, 26, 24, 0.55);
@@ -503,10 +522,29 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="authGate" style="display:none;">
+  <div class="auth-card">
+    <h2>התחברות</h2>
+    <p class="sub">מערכת בונוסים · פריפיט ומובמנט</p>
+    <form id="authLoginForm">
+      <div class="auth-field">
+        <label for="authEmail">אימייל</label>
+        <input type="email" id="authEmail" autocomplete="username" required />
+      </div>
+      <div class="auth-field">
+        <label for="authPassword">סיסמה</label>
+        <input type="password" id="authPassword" autocomplete="current-password" required />
+      </div>
+      <p class="auth-error" id="authError"></p>
+      <button type="submit" class="primary-movement" id="authLoginBtn">התחבר</button>
+    </form>
+  </div>
+</div>
+<div class="wrap" id="appRoot" style="display:none;">
   <header>
     <p class="eyebrow">מערכת בונוסים &middot; פריפיט ומובמנט</p>
     <h1>חישוב בונוס נציגים</h1>
+    <button id="logoutBtn" type="button" style="position:absolute; left:16px; top:28px; font-size:12px;">התנתקות</button>
   </header>
 
   <div class="top-nav">
@@ -2773,13 +2811,65 @@ async function resetAllData() {
   }
 }
 
-(async function init() {
+let appInitialized = false;
+async function initApp() {
+  if (appInitialized) return;
+  appInitialized = true;
   await loadDeletedAgents();
   await loadAllMonthWorkDays();
   await loadMonthCustomLabels();
   await populateMonthSelect();
   await loadMonth(activeMonth);
-})();
+}
+
+/* ================= AUTH GATE ================= */
+function showApp() {
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('appRoot').style.display = '';
+  initApp();
+}
+function showAuthGate(errorMsg) {
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('authGate').style.display = 'flex';
+  document.getElementById('authError').textContent = errorMsg || '';
+}
+async function checkAuthAndInit() {
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) {
+      showApp();
+    } else {
+      showAuthGate();
+    }
+  } catch (err) {
+    console.error(err);
+    showAuthGate();
+  }
+}
+document.getElementById('authLoginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const btn = document.getElementById('authLoginBtn');
+  btn.disabled = true;
+  btn.textContent = 'מתחבר…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false;
+  btn.textContent = 'התחבר';
+  if (error) {
+    showAuthGate('התחברות נכשלה — בדוק אימייל וסיסמה.');
+    return;
+  }
+  showApp();
+});
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  location.reload();
+});
+sb.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT') showAuthGate();
+});
+checkAuthAndInit();
 
 /* ================= TAB NAVIGATION ================= */
 document.getElementById('navCalculator').addEventListener('click', () => switchTab('calculator'));
