@@ -2369,6 +2369,9 @@ bindFileButton('uploadPhonesBtn', 'phonesInput', async (data) => {
   } catch (err) {
     console.error(err);
   }
+  // ספר הטלפונים המרכזי: כל ת"ז עם טלפון בקובץ נשמר כאן, גם אם הוא לא (עדיין) נציג קיים
+  // באף מחלקה - כדי שיהיה זמין לשיקוף שכר ולכל שימוש עתידי אחר.
+  await Promise.all(Object.keys(phoneByEmpId).map(empId => syncContactPhone(empId, phoneByEmpId[empId])));
 
   const foundInFile = Object.keys(phoneByEmpId).length;
   showBanner('ok', `נמצאו ${foundInFile} ת"ז עם טלפון בקובץ. עודכנו ${matchedDb} מתוך ${totalAgentsInSystem} נציגים במערכת. ${stillMissingPhone > 0 ? `⚠️ ${stillMissingPhone} נציגים עדיין ללא טלפון (ת"ז לא נמצא בקובץ).` : '✓ לכל הנציגים יש טלפון.'}`);
