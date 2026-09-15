@@ -2591,6 +2591,31 @@ async function scheduleSave() {
   saveTimer = setTimeout(saveAllToSupabase, 700);
 }
 
+// "ספר טלפונים" מרכזי, ללא תלות במחלקה - כל טלפון שנשמר בכל טבלה (או בשיקוף שכר)
+// מגיע לכאן, כדי שיהיה זמין בכל מקום אחר במערכת בלי להזין אותו שוב.
+async function syncContactPhone(empId, phone) {
+  const cleanEmpId = String(empId || '').trim();
+  const cleanPhone = String(phone || '').trim();
+  if (!cleanEmpId || !cleanPhone) return;
+  try {
+    await sb.from('contact_phones').upsert({ emp_id: cleanEmpId, phone: cleanPhone, updated_at: new Date().toISOString() }, { onConflict: 'emp_id' });
+  } catch (err) {
+    console.error('syncContactPhone (ייתכן שטבלת contact_phones עוד לא נוצרה):', err);
+  }
+}
+async function getAllContactPhones() {
+  try {
+    const { data, error } = await sb.from('contact_phones').select('emp_id, phone');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => { map[String(r.emp_id).trim()] = r.phone || ''; });
+    return map;
+  } catch (err) {
+    console.error(err);
+    return {};
+  }
+}
+
 async function deleteAgentFromDb(empId, dept) {
   try {
     const { data: agentRows, error: selErr } = await sb
@@ -2634,6 +2659,7 @@ async function saveAllToSupabase() {
 
         let agentId;
         const rosterFields = { first_name: row.firstName || '', last_name: row.lastName || '', phone: row.phone || '' };
+        if (row.phone) syncContactPhone(empId, row.phone);
         if (agentRows && agentRows.length > 0) {
           agentId = agentRows[0].id;
           // is_temp דורש עמודה בטבלת agents (ר' הודעה נפרדת); אם היא עוד לא קיימת, ננסה שוב בלעדיה
@@ -4049,14 +4075,19 @@ function buildReflectionEmployees(parsedRows) {
 }
 
 async function loadReflectionPhones() {
+  reflectionPhoneByEmpId = {};
   try {
     const { data, error } = await sb.from('agents').select('emp_id, phone');
     if (error) throw error;
-    reflectionPhoneByEmpId = {};
-    (data || []).forEach(a => { reflectionPhoneByEmpId[String(a.emp_id).trim()] = a.phone || ''; });
+    (data || []).forEach(a => { if (a.phone) reflectionPhoneByEmpId[String(a.emp_id).trim()] = a.phone; });
   } catch (err) {
     console.error(err);
   }
+  // גיבוי: ספר הטלפונים המרכזי (לא תלוי מחלקה) עבור מי שאין לו טלפון ב-agents
+  const central = await getAllContactPhones();
+  Object.keys(central).forEach(empId => {
+    if (!reflectionPhoneByEmpId[empId]) reflectionPhoneByEmpId[empId] = central[empId];
+  });
 }
 
 function populateReflectionDeptFilter() {
@@ -4098,7 +4129,7 @@ function renderReflectionTable() {
       <td>${e.fullName || '(ללא שם)'}</td>
       <td class="num">${e.empId}</td>
       <td class="muted">${e.dept}</td>
-      <td class="num">${phone || '⚠️ אין טלפון'}</td>
+      <td><input type="text" class="num" dir="ltr" data-phone-emp="${e.empId}" value="${phone}" placeholder="⚠️ הזן טלפון" style="width:120px;" /></td>
       <td class="num">${e.workedDays}</td>
       <td class="num">${fmt(e.totalHours, 2)}</td>
       <td class="num">${e.leaveDays}</td>
@@ -4119,6 +4150,20 @@ function renderReflectionTable() {
   });
   tbody.querySelectorAll('[data-view]').forEach(btn => {
     btn.addEventListener('click', () => showReflectionDetail(btn.dataset.view));
+  });
+  tbody.querySelectorAll('[data-phone-emp]').forEach(input => {
+    input.addEventListener('change', async (ev) => {
+      const empId = ev.target.dataset.phoneEmp;
+      const phone = ev.target.value.trim();
+      const emp = reflectionEmployees.find(x => x.empId === empId);
+      if (!phone) return;
+      reflectionPhoneByEmpId[empId] = phone;
+      await syncContactPhone(empId, phone); // זמין מכאן ואילך גם למחשבון הראשי ולדיווחים אחרים
+      if (emp && emp.dbId) {
+        try { await sb.from('reflection_employees').update({ phone }).eq('id', emp.dbId); } catch (err) { console.error(err); }
+      }
+      renderReflectionTable();
+    });
   });
 }
 
