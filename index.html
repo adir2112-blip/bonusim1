@@ -1218,7 +1218,13 @@
   <div id="reflectionView" style="display:none;">
     <div class="global-toolbar">
       <div class="toolbar-group">
-        <span class="toolbar-label">קובץ שיקוף (עצמאי - לא נוגע במסך הראשי)</span>
+        <span class="toolbar-label">דיווח</span>
+        <select id="reflectionBatchSelect" style="min-width:160px;"></select>
+        <button id="reflectionRenameBatchBtn" title="שנה את שם הדיווח הנוכחי">✏️ שנה שם</button>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">קובץ חדש (עצמאי - לא נוגע במסך הראשי)</span>
         <button id="uploadReflectionBtn" title="דוח נוכחות יומי&#10;עמודות: C=ת&quot;ז, D=שם משפחה, E=שם פרטי, G=מחלקה, L=תאריך, M=כניסה, N=יציאה, S=נוכח לשכר, T=סה״כ לשכר">העלה קובץ שעות</button>
         <input type="file" id="reflectionInput" accept=".xlsx,.xls,.csv" style="display:none" />
       </div>
@@ -1252,6 +1258,8 @@
               <th>ימי עבודה</th>
               <th>סה"כ שעות</th>
               <th>ימי חופש/מחלה</th>
+              <th>נשלח</th>
+              <th>סטטוס אישור</th>
               <th></th>
             </tr>
           </thead>
@@ -1273,29 +1281,6 @@
     <div class="dept-toolbar" style="margin-top:12px;">
       <button class="primary-movement" id="sendReflectionBtn">שלח לנבחרים בוואטסאפ</button>
       <span class="muted" id="reflectionSendStatus"></span>
-    </div>
-
-    <h2 style="margin-top:36px; margin-bottom:12px;">מעקב אישורים</h2>
-    <div class="global-toolbar">
-      <div class="toolbar-group">
-        <span class="toolbar-label">אצווה</span>
-        <select id="reflectionBatchSelect"></select>
-      </div>
-    </div>
-    <div class="table-card">
-      <div class="table-scroll">
-        <table id="reflectionApprovalTable">
-          <thead>
-            <tr>
-              <th>שם מלא</th>
-              <th>מחלקה</th>
-              <th>נשלח</th>
-              <th>סטטוס אישור</th>
-            </tr>
-          </thead>
-          <tbody id="reflectionApprovalTbody"></tbody>
-        </table>
-      </div>
     </div>
   </div><!-- /reflectionView -->
 
@@ -4086,31 +4071,14 @@ function currentReflectionFilterList() {
   return reflectionEmployees.filter(e => deptFilter === 'all' || e.dept === deptFilter);
 }
 
-// שמירת טיוטת התצוגה בדפדפן (לא בשרת) כדי שרענון דף לא ימחק קובץ שכבר נטען.
-const REFLECTION_DRAFT_KEY = 'reflectionDraft_v1';
-function saveReflectionDraft() {
-  try {
-    localStorage.setItem(REFLECTION_DRAFT_KEY, JSON.stringify({
-      employees: reflectionEmployees,
-      selected: [...reflectionSelectedIds],
-    }));
-  } catch (err) {
-    console.error(err);
-  }
-}
-function loadReflectionDraft() {
-  try {
-    const raw = localStorage.getItem(REFLECTION_DRAFT_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.employees) || parsed.employees.length === 0) return false;
-    reflectionEmployees = parsed.employees;
-    reflectionSelectedIds = new Set(parsed.selected || []);
-    return true;
-  } catch (err) {
-    console.error(err);
-    return false;
-  }
+// כל העלאה יוצרת "דיווח" (reflection_batches) שנשמר מיד ב-DB עם כל הנציגים/ימים שלו -
+// כך אפשר לעבור בין דיווחים ישנים ולשנות את שמם, לא רק לראות את מה שהועלה עכשיו.
+let currentReflectionBatchId = null;
+
+function statusCellHtml(e) {
+  if (e.approvedAt) return `<span class="refl-approved">אושר ב-${new Date(e.approvedAt).toLocaleDateString('he-IL')}</span>`;
+  if (e.disputedAt) return `<span class="refl-disputed" title="${(e.disputeNote || '').replace(/"/g, '&quot;')}">⚠️ דווחה טעות: ${e.disputeNote || ''}</span>`;
+  return '<span class="refl-pending">—</span>';
 }
 
 function renderReflectionTable() {
@@ -4121,10 +4089,11 @@ function renderReflectionTable() {
   list.forEach(e => {
     const phone = reflectionPhoneByEmpId[e.empId] || '';
     if (!phone) noPhone++;
+    const alreadySent = !!e.sentAt;
     const tr = document.createElement('tr');
     tr.className = reflectionSelectedIds.has(e.empId) ? 'refl-row-selected' : '';
     tr.innerHTML = `
-      <td style="text-align:center;"><input type="checkbox" data-emp="${e.empId}" ${reflectionSelectedIds.has(e.empId) ? 'checked' : ''} ${phone ? '' : 'disabled'} title="${phone ? '' : 'אין מספר טלפון - לא ניתן לשלוח'}" /></td>
+      <td style="text-align:center;"><input type="checkbox" data-emp="${e.empId}" ${reflectionSelectedIds.has(e.empId) ? 'checked' : ''} ${(phone && !alreadySent) ? '' : 'disabled'} title="${!phone ? 'אין מספר טלפון - לא ניתן לשלוח' : (alreadySent ? 'כבר נשלח' : '')}" /></td>
       <td>${e.fullName || '(ללא שם)'}</td>
       <td class="num">${e.empId}</td>
       <td class="muted">${e.dept}</td>
@@ -4132,13 +4101,14 @@ function renderReflectionTable() {
       <td class="num">${e.workedDays}</td>
       <td class="num">${fmt(e.totalHours, 2)}</td>
       <td class="num">${e.leaveDays}</td>
+      <td class="num">${e.sentAt ? new Date(e.sentAt).toLocaleDateString('he-IL') : '—'}</td>
+      <td>${statusCellHtml(e)}</td>
       <td><button class="refl-view-btn" data-view="${e.empId}">צפה בפירוט</button></td>
     `;
     tbody.appendChild(tr);
   });
   document.getElementById('reflectionNoPhoneCount').textContent = noPhone;
   document.getElementById('reflectionSelectedCount').textContent = reflectionSelectedIds.size;
-  saveReflectionDraft();
   tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', (e) => {
       const empId = e.target.dataset.emp;
@@ -4181,6 +4151,127 @@ document.getElementById('closeReflectionDetailBtn').addEventListener('click', ()
   document.getElementById('reflectionDetailOverlay').style.display = 'none';
 });
 
+async function createReflectionBatch(label) {
+  const { data, error } = await sb.from('reflection_batches').insert({ label }).select('id, label, created_at').single();
+  if (error) throw error;
+  return data;
+}
+
+// שומר את כל הנציגים+הימים שנפרסרו מהקובץ תחת האצווה, ומעדכן e.dbId/e.token לכל נציג.
+async function persistReflectionBatchData(batchId) {
+  await Promise.all(reflectionEmployees.map(async (e) => {
+    try {
+      const { data: empRow, error } = await sb.from('reflection_employees').insert({
+        batch_id: batchId,
+        emp_id: e.empId,
+        full_name: e.fullName,
+        department: e.dept,
+        phone: reflectionPhoneByEmpId[e.empId] || null,
+        last4_id: last4Digits(e.empId),
+      }).select('id, token').single();
+      if (error) throw error;
+      e.dbId = empRow.id;
+      e.token = empRow.token;
+      if (e.days.length) {
+        const dayRows = e.days.map(d => ({
+          employee_id: empRow.id,
+          work_date: d.date,
+          check_in: d.in,
+          check_out: d.out,
+          hours: d.kind === 'worked' ? d.S : null,
+          leave_total: d.kind === 'leave' ? d.T : null,
+          kind: d.kind,
+        }));
+        const { error: daysErr } = await sb.from('reflection_days').insert(dayRows);
+        if (daysErr) throw daysErr;
+      }
+    } catch (err) {
+      console.error('Failed to persist reflection employee', e.empId, err);
+    }
+  }));
+}
+
+// טוען דיווח קיים מה-DB לתוך המסך (בלי קריאה מחדש של קובץ).
+async function loadReflectionBatchFromDb(batchId) {
+  const { data: empRows, error: empErr } = await sb.from('reflection_employees')
+    .select('id, emp_id, full_name, department, phone, token, sent_at, approved_at, disputed_at, dispute_note')
+    .eq('batch_id', batchId);
+  if (empErr) throw empErr;
+  const empIds = (empRows || []).map(e => e.id);
+  let dayRows = [];
+  if (empIds.length) {
+    const { data, error } = await sb.from('reflection_days').select('*').in('employee_id', empIds);
+    if (error) throw error;
+    dayRows = data || [];
+  }
+  const daysByEmp = {};
+  dayRows.forEach(d => { (daysByEmp[d.employee_id] = daysByEmp[d.employee_id] || []).push(d); });
+
+  reflectionEmployees = (empRows || []).map(e => {
+    const days = (daysByEmp[e.id] || [])
+      .map(d => ({ date: d.work_date, in: d.check_in, out: d.check_out, S: d.hours, T: d.leave_total, kind: d.kind }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      empId: e.emp_id, fullName: e.full_name, dept: e.department,
+      dbId: e.id, token: e.token, sentAt: e.sent_at,
+      approvedAt: e.approved_at, disputedAt: e.disputed_at, disputeNote: e.dispute_note,
+      days,
+      workedDays: days.filter(d => d.kind === 'worked').length,
+      leaveDays: days.filter(d => d.kind === 'leave').length,
+      totalHours: days.reduce((sum, d) => d.kind === 'worked' ? sum + (Number(d.S) || 0) : sum, 0),
+    };
+  });
+  reflectionPhoneByEmpId = {};
+  (empRows || []).forEach(e => { reflectionPhoneByEmpId[e.emp_id] = e.phone || ''; });
+  reflectionSelectedIds = new Set();
+}
+
+async function populateReflectionBatchSelect(selectId) {
+  const sel = document.getElementById('reflectionBatchSelect');
+  const { data, error } = await sb.from('reflection_batches').select('id, label, created_at').order('created_at', { ascending: false });
+  if (error) { console.error(error); return; }
+  sel.innerHTML = (data || []).map(b => `<option value="${b.id}">${b.label}</option>`).join('');
+  const target = selectId || (data && data[0] && data[0].id) || null;
+  if (target) {
+    sel.value = target;
+    currentReflectionBatchId = target;
+  }
+  return data || [];
+}
+
+document.getElementById('reflectionBatchSelect').addEventListener('change', async (e) => {
+  currentReflectionBatchId = e.target.value;
+  if (!currentReflectionBatchId) return;
+  const banner = document.getElementById('reflectionBanner');
+  try {
+    await loadReflectionBatchFromDb(currentReflectionBatchId);
+    populateReflectionDeptFilter();
+    renderReflectionTable();
+    banner.innerHTML = '';
+  } catch (err) {
+    console.error(err);
+    banner.innerHTML = '<div class="banner error">שגיאה בטעינת הדיווח.</div>';
+  }
+});
+
+document.getElementById('reflectionRenameBatchBtn').addEventListener('click', async () => {
+  if (!currentReflectionBatchId) {
+    alert('אין דיווח פעיל לשינוי שם.');
+    return;
+  }
+  const sel = document.getElementById('reflectionBatchSelect');
+  const current = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const name = prompt('שם חדש לדיווח:', current);
+  if (!name || !name.trim()) return;
+  try {
+    await sb.from('reflection_batches').update({ label: name.trim() }).eq('id', currentReflectionBatchId);
+    await populateReflectionBatchSelect(currentReflectionBatchId);
+  } catch (err) {
+    console.error(err);
+    alert('שגיאה בשינוי השם.');
+  }
+});
+
 document.getElementById('uploadReflectionBtn').addEventListener('click', () => document.getElementById('reflectionInput').click());
 document.getElementById('reflectionInput').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
@@ -4199,12 +4290,17 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
     reflectionEmployees = buildReflectionEmployees(parsed);
     reflectionSelectedIds = new Set();
     await loadReflectionPhones();
+    banner.innerHTML = '<div class="banner ok">שומר את הדיווח…</div>';
+    const defaultLabel = `דיווח ${new Date().toLocaleDateString('he-IL')}`;
+    const batch = await createReflectionBatch(defaultLabel);
+    await persistReflectionBatchData(batch.id);
+    await populateReflectionBatchSelect(batch.id);
     populateReflectionDeptFilter();
     renderReflectionTable();
-    banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים מהקובץ.</div>`;
+    banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים ונשמרו כ"<b style="color:#000">${defaultLabel}</b>". אפשר לשנות את השם בכפתור "✏️ שנה שם".</div>`;
   } catch (err) {
     console.error(err);
-    banner.innerHTML = '<div class="banner error">שגיאה בקריאת הקובץ.</div>';
+    banner.innerHTML = '<div class="banner error">שגיאה בקריאת הקובץ או בשמירתו.</div>';
   }
   e.target.value = '';
 });
@@ -4212,13 +4308,13 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
 document.getElementById('reflectionDeptFilter').addEventListener('change', renderReflectionTable);
 document.getElementById('reflectionSelectAllCheckbox').addEventListener('change', (e) => {
   currentReflectionFilterList().forEach(x => {
-    if (!reflectionPhoneByEmpId[x.empId]) return;
+    if (!reflectionPhoneByEmpId[x.empId] || x.sentAt) return;
     if (e.target.checked) reflectionSelectedIds.add(x.empId); else reflectionSelectedIds.delete(x.empId);
   });
   renderReflectionTable();
 });
 document.getElementById('reflectionSelectAllBtn').addEventListener('click', () => {
-  reflectionEmployees.forEach(x => { if (reflectionPhoneByEmpId[x.empId]) reflectionSelectedIds.add(x.empId); });
+  reflectionEmployees.forEach(x => { if (reflectionPhoneByEmpId[x.empId] && !x.sentAt) reflectionSelectedIds.add(x.empId); });
   renderReflectionTable();
 });
 document.getElementById('reflectionClearAllBtn').addEventListener('click', () => {
@@ -4227,7 +4323,7 @@ document.getElementById('reflectionClearAllBtn').addEventListener('click', () =>
 });
 
 document.getElementById('sendReflectionBtn').addEventListener('click', async () => {
-  const toSend = reflectionEmployees.filter(e => reflectionSelectedIds.has(e.empId) && reflectionPhoneByEmpId[e.empId]);
+  const toSend = reflectionEmployees.filter(e => reflectionSelectedIds.has(e.empId) && reflectionPhoneByEmpId[e.empId] && !e.sentAt && e.dbId && e.token);
   const statusEl = document.getElementById('reflectionSendStatus');
   if (toSend.length === 0) {
     statusEl.textContent = 'לא נבחרו נציגים עם מספר טלפון לשליחה.';
@@ -4237,50 +4333,19 @@ document.getElementById('sendReflectionBtn').addEventListener('click', async () 
 
   const btn = document.getElementById('sendReflectionBtn');
   btn.disabled = true;
-  const batchLabel = `שיקוף ${new Date().toLocaleDateString('he-IL')}`;
-  const { data: batch, error: batchErr } = await sb.from('reflection_batches').insert({ label: batchLabel }).select('id').single();
-  if (batchErr) {
-    console.error(batchErr);
-    statusEl.textContent = 'שגיאה ביצירת אצווה. ודא שה-SQL של פיצ׳ר השיקוף רץ בהצלחה.';
-    btn.disabled = false;
-    return;
-  }
-
   let sent = 0, failed = 0;
   for (let i = 0; i < toSend.length; i++) {
     const e = toSend[i];
     statusEl.textContent = `שולח ${i + 1}/${toSend.length}…`;
     try {
-      const { data: empRow, error: empErr } = await sb.from('reflection_employees').insert({
-        batch_id: batch.id,
-        emp_id: e.empId,
-        full_name: e.fullName,
-        department: e.dept,
-        phone: reflectionPhoneByEmpId[e.empId],
-        last4_id: last4Digits(e.empId),
-      }).select('id, token').single();
-      if (empErr) throw empErr;
-
-      const dayRows = e.days.map(d => ({
-        employee_id: empRow.id,
-        work_date: d.date,
-        check_in: d.in,
-        check_out: d.out,
-        hours: d.kind === 'worked' ? d.S : null,
-        leave_total: d.kind === 'leave' ? d.T : null,
-        kind: d.kind,
-      }));
-      const { error: daysErr } = await sb.from('reflection_days').insert(dayRows);
-      if (daysErr) throw daysErr;
-
-      const link = `https://adir2112-blip.github.io/bonusim1/reflection.html?t=${empRow.token}`;
+      const link = `https://adir2112-blip.github.io/bonusim1/reflection.html?t=${e.token}`;
       const message = `שלום ${e.firstName || e.fullName},\nמצורף קישור לאישור שעות העבודה:\n${link}`;
       const result = await sendWhatsAppMessage(reflectionPhoneByEmpId[e.empId], message);
       await sb.from('reflection_employees').update({
         sent_at: result.ok ? new Date().toISOString() : null,
         send_status: result.ok ? 'sent' : 'failed',
-      }).eq('id', empRow.id);
-      if (result.ok) sent++; else failed++;
+      }).eq('id', e.dbId);
+      if (result.ok) { sent++; e.sentAt = new Date().toISOString(); } else failed++;
     } catch (err) {
       console.error(err);
       failed++;
@@ -4290,63 +4355,23 @@ document.getElementById('sendReflectionBtn').addEventListener('click', async () 
 
   statusEl.textContent = `הסתיים: ${sent} נשלחו בהצלחה, ${failed} נכשלו.`;
   btn.disabled = false;
-  await populateReflectionBatchSelect();
+  reflectionSelectedIds.clear();
+  renderReflectionTable();
 });
-
-async function populateReflectionBatchSelect() {
-  const sel = document.getElementById('reflectionBatchSelect');
-  try {
-    const { data, error } = await sb.from('reflection_batches').select('id, label, created_at').order('created_at', { ascending: false });
-    if (error) throw error;
-    sel.innerHTML = (data || []).map(b => `<option value="${b.id}">${b.label} (${new Date(b.created_at).toLocaleDateString('he-IL')})</option>`).join('');
-    if (data && data.length) await renderReflectionApprovalTable(data[0].id);
-    else document.getElementById('reflectionApprovalTbody').innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">אין עדיין אצוות שיקוף שנשלחו.</td></tr>';
-  } catch (err) {
-    console.error(err);
-  }
-}
-async function renderReflectionApprovalTable(batchId) {
-  const tbody = document.getElementById('reflectionApprovalTbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
-  try {
-    const { data, error } = await sb.from('reflection_employees').select('full_name, department, sent_at, approved_at, disputed_at, dispute_note').eq('batch_id', batchId).order('full_name');
-    if (error) throw error;
-    tbody.innerHTML = '';
-    (data || []).forEach(r => {
-      const tr = document.createElement('tr');
-      let statusHtml;
-      if (r.approved_at) {
-        statusHtml = `<span class="refl-approved">אושר ב-${new Date(r.approved_at).toLocaleDateString('he-IL')}</span>`;
-      } else if (r.disputed_at) {
-        statusHtml = `<span class="refl-disputed" title="${(r.dispute_note || '').replace(/"/g, '&quot;')}">⚠️ דווחה טעות ב-${new Date(r.disputed_at).toLocaleDateString('he-IL')}: ${r.dispute_note || ''}</span>`;
-      } else {
-        statusHtml = '<span class="refl-pending">טרם אושר</span>';
-      }
-      tr.innerHTML = `
-        <td>${r.full_name}</td>
-        <td class="muted">${r.department}</td>
-        <td class="num">${r.sent_at ? new Date(r.sent_at).toLocaleString('he-IL') : '—'}</td>
-        <td>${statusHtml}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error(err);
-    tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינה.</td></tr>';
-  }
-}
-document.getElementById('reflectionBatchSelect').addEventListener('change', (e) => renderReflectionApprovalTable(e.target.value));
 
 async function initReflectionTabIfNeeded() {
   if (reflectionTabLoaded) return;
   reflectionTabLoaded = true;
-  if (loadReflectionDraft()) {
-    await loadReflectionPhones();
-    populateReflectionDeptFilter();
-    renderReflectionTable();
-    document.getElementById('reflectionBanner').innerHTML = '<div class="banner ok">שוחזרה טעינה קודמת שנשמרה בדפדפן הזה.</div>';
+  const batches = await populateReflectionBatchSelect();
+  if (batches && batches.length && currentReflectionBatchId) {
+    try {
+      await loadReflectionBatchFromDb(currentReflectionBatchId);
+      populateReflectionDeptFilter();
+      renderReflectionTable();
+    } catch (err) {
+      console.error(err);
+    }
   }
-  await populateReflectionBatchSelect();
 }
 
 </script>
