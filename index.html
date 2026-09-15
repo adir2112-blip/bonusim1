@@ -689,44 +689,6 @@
     </div>
   </div>
 
-  <div id="reflectionDetailOverlay" class="summary-overlay" style="display:none;">
-    <div class="summary-modal">
-      <div class="summary-modal-header theme-sales">
-        <div class="summary-modal-heading">
-          <span class="summary-modal-icon">🗓️</span>
-          <div>
-            <p class="summary-modal-title" id="reflectionDetailName"></p>
-            <p class="summary-modal-subtitle" id="reflectionDetailDept"></p>
-          </div>
-        </div>
-        <div class="summary-modal-actions">
-          <button class="summary-modal-close" id="closeReflectionDetailBtn" aria-label="סגור">✕</button>
-        </div>
-      </div>
-      <div class="summary-modal-body">
-        <div class="summary-table-card">
-          <table class="summary-table theme-sales">
-            <thead>
-              <tr>
-                <th>תאריך</th>
-                <th>ת"ז</th>
-                <th>שם מלא</th>
-                <th>מחלקה</th>
-                <th>כניסה</th>
-                <th>יציאה</th>
-                <th>כניסה 2</th>
-                <th>יציאה 2</th>
-                <th>נוכח לשכר</th>
-              </tr>
-            </thead>
-            <tbody id="reflectionDetailTbody"></tbody>
-            <tfoot id="reflectionDetailTfoot"></tfoot>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="global-toolbar">
     <div class="toolbar-group">
       <span class="toolbar-label">קבצי דוח משותפים</span>
@@ -1301,6 +1263,46 @@
       <span class="muted" id="reflectionSendStatus"></span>
     </div>
   </div><!-- /reflectionView -->
+
+  <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
+       של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
+  <div id="reflectionDetailOverlay" class="summary-overlay" style="display:none;">
+    <div class="summary-modal">
+      <div class="summary-modal-header theme-sales">
+        <div class="summary-modal-heading">
+          <span class="summary-modal-icon">🗓️</span>
+          <div>
+            <p class="summary-modal-title" id="reflectionDetailName"></p>
+            <p class="summary-modal-subtitle" id="reflectionDetailDept"></p>
+          </div>
+        </div>
+        <div class="summary-modal-actions">
+          <button class="summary-modal-close" id="closeReflectionDetailBtn" aria-label="סגור">✕</button>
+        </div>
+      </div>
+      <div class="summary-modal-body">
+        <div class="summary-table-card">
+          <table class="summary-table theme-sales">
+            <thead>
+              <tr>
+                <th>תאריך</th>
+                <th>ת"ז</th>
+                <th>שם מלא</th>
+                <th>מחלקה</th>
+                <th>כניסה</th>
+                <th>יציאה</th>
+                <th>כניסה 2</th>
+                <th>יציאה 2</th>
+                <th>נוכח לשכר</th>
+              </tr>
+            </thead>
+            <tbody id="reflectionDetailTbody"></tbody>
+            <tfoot id="reflectionDetailTfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 
 </div>
 
@@ -4166,31 +4168,38 @@ function renderReflectionTable() {
   });
   document.getElementById('reflectionNoPhoneCount').textContent = noPhone;
   document.getElementById('reflectionSelectedCount').textContent = reflectionSelectedIds.size;
-  tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      const empId = e.target.dataset.emp;
-      if (e.target.checked) reflectionSelectedIds.add(empId); else reflectionSelectedIds.delete(empId);
-      renderReflectionTable();
-    });
-  });
-  tbody.querySelectorAll('[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => showReflectionDetail(btn.dataset.view));
-  });
-  tbody.querySelectorAll('[data-phone-emp]').forEach(input => {
-    input.addEventListener('change', async (ev) => {
-      const empId = ev.target.dataset.phoneEmp;
-      const phone = ev.target.value.trim();
-      const emp = reflectionEmployees.find(x => x.empId === empId);
-      if (!phone) return;
-      reflectionPhoneByEmpId[empId] = phone;
-      await syncContactPhone(empId, phone); // זמין מכאן ואילך גם למחשבון הראשי ולדיווחים אחרים
-      if (emp && emp.dbId) {
-        try { await sb.from('reflection_employees').update({ phone }).eq('id', emp.dbId); } catch (err) { console.error(err); }
-      }
-      renderReflectionTable();
-    });
-  });
 }
+
+// Event delegation: מאזינים נקבעים פעם אחת על ה-tbody היציב, לא על כל שורה שנוצרת
+// מחדש - כך שהתנהגות לחיצה תקינה גם אחרי ריענון הטבלה, בלי תלות בתזמון ה-render.
+document.getElementById('reflectionTbody').addEventListener('click', (e) => {
+  const viewBtn = e.target.closest('[data-view]');
+  if (viewBtn) {
+    showReflectionDetail(viewBtn.dataset.view);
+  }
+});
+document.getElementById('reflectionTbody').addEventListener('change', async (e) => {
+  const cb = e.target.closest('input[type="checkbox"][data-emp]');
+  if (cb) {
+    const empId = cb.dataset.emp;
+    if (cb.checked) reflectionSelectedIds.add(empId); else reflectionSelectedIds.delete(empId);
+    renderReflectionTable();
+    return;
+  }
+  const phoneInput = e.target.closest('input[data-phone-emp]');
+  if (phoneInput) {
+    const empId = phoneInput.dataset.phoneEmp;
+    const phone = phoneInput.value.trim();
+    const emp = reflectionEmployees.find(x => x.empId === empId);
+    if (!phone) return;
+    reflectionPhoneByEmpId[empId] = phone;
+    await syncContactPhone(empId, phone); // זמין מכאן ואילך גם למחשבון הראשי ולדיווחים אחרים
+    if (emp && emp.dbId) {
+      try { await sb.from('reflection_employees').update({ phone }).eq('id', emp.dbId); } catch (err) { console.error(err); }
+    }
+    renderReflectionTable();
+  }
+});
 
 function showReflectionDetail(empId) {
   try {
