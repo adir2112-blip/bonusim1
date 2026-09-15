@@ -29,6 +29,9 @@
     --success-text: #3C6B2E;
     --danger-bg: #FBEAE7;
     --danger-text: #A33B2A;
+    --leave-bg: #FBF0DD;
+    --leave-text: #8A5A12;
+    --leave-border: #E9C77B;
     --focus: #2A6BB0;
     --shadow-sm: 0 1px 2px rgba(38,36,31,0.05), 0 1px 3px rgba(38,36,31,0.06);
     --shadow-md: 0 4px 10px rgba(38,36,31,0.07), 0 2px 4px rgba(38,36,31,0.05);
@@ -513,6 +516,20 @@
     font-size: 15px; font-weight: 700; padding: 4px 8px; border-radius: 6px; cursor: pointer;
   }
   .summary-remove-btn:hover { background: var(--danger-bg); }
+
+  /* ===== Reflection ("שיקוף שכר") feature ===== */
+  .refl-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .refl-badge.leave { background: var(--leave-bg); color: var(--leave-text); border: 1px solid var(--leave-border); }
+  .refl-badge.off { color: var(--text-muted); font-weight: 500; background: none; padding: 0; }
+  .refl-day-cell { display: flex; align-items: center; gap: 8px; }
+  .refl-leave-note { font-size: 11px; color: var(--leave-text); opacity: .85; }
+  #reflectionTbody tr.refl-row-selected { background: var(--accent-movement-bg); }
+  .refl-view-btn { font-size: 12px; padding: 5px 12px; }
+  .refl-approved { color: var(--success-text); font-weight: 600; }
+  .refl-pending { color: var(--text-muted); }
   @media print {
     .summary-remove-col { display: none !important; }
     .summary-modal-header, .summary-print-btn, .summary-modal-close { display: none !important; }
@@ -554,6 +571,7 @@
     <button class="nav-tab" id="navDashboard" type="button">לוח בקרה</button>
     <button class="nav-tab" id="navUsers" type="button">ניהול משתמשים</button>
     <button class="nav-tab" id="navMessages" type="button">היסטוריית הודעות</button>
+    <button class="nav-tab" id="navReflection" type="button">שיקוף שכר</button>
   </div>
 
   <div id="calculatorView">
@@ -665,6 +683,42 @@
               <tfoot id="salesSummaryTfoot"></tfoot>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="reflectionDetailOverlay" class="summary-overlay" style="display:none;">
+    <div class="summary-modal">
+      <div class="summary-modal-header theme-sales">
+        <div class="summary-modal-heading">
+          <span class="summary-modal-icon">🗓️</span>
+          <div>
+            <p class="summary-modal-title" id="reflectionDetailName"></p>
+            <p class="summary-modal-subtitle" id="reflectionDetailDept"></p>
+          </div>
+        </div>
+        <div class="summary-modal-actions">
+          <button class="summary-modal-close" id="closeReflectionDetailBtn" aria-label="סגור">✕</button>
+        </div>
+      </div>
+      <div class="summary-modal-body">
+        <div class="summary-table-card">
+          <table class="summary-table theme-sales">
+            <thead>
+              <tr>
+                <th>תאריך</th>
+                <th>ת"ז</th>
+                <th>שם מלא</th>
+                <th>מחלקה</th>
+                <th>כניסה</th>
+                <th>יציאה</th>
+                <th>נוכח לשכר</th>
+              </tr>
+            </thead>
+            <tbody id="reflectionDetailTbody"></tbody>
+            <tfoot id="reflectionDetailTfoot"></tfoot>
+          </table>
         </div>
       </div>
     </div>
@@ -1159,6 +1213,90 @@
       </div>
     </div>
   </div><!-- /messagesView -->
+
+  <div id="reflectionView" style="display:none;">
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">קובץ שיקוף (עצמאי - לא נוגע במסך הראשי)</span>
+        <button id="uploadReflectionBtn" title="דוח נוכחות יומי&#10;עמודות: C=ת&quot;ז, D=שם משפחה, E=שם פרטי, G=מחלקה, L=תאריך, M=כניסה, N=יציאה, S=נוכח לשכר, T=סה״כ לשכר">העלה קובץ שעות</button>
+        <input type="file" id="reflectionInput" accept=".xlsx,.xls,.csv" style="display:none" />
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">סינון מחלקה</span>
+        <select id="reflectionDeptFilter">
+          <option value="all">הכל</option>
+        </select>
+      </div>
+      <div class="divider-v"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">בחירה</span>
+        <button id="reflectionSelectAllBtn">בחר הכל</button>
+        <button id="reflectionClearAllBtn">נקה בחירה</button>
+      </div>
+    </div>
+
+    <div id="reflectionBanner"></div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="reflectionTable">
+          <thead>
+            <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="reflectionSelectAllCheckbox" /></th>
+              <th>שם מלא</th>
+              <th>ת"ז</th>
+              <th>מחלקה</th>
+              <th>טלפון</th>
+              <th>ימי עבודה</th>
+              <th>סה"כ שעות</th>
+              <th>ימי חופש/מחלה</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="reflectionTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div class="stat">
+        <p class="label">נבחרו לשליחה</p>
+        <p class="value" id="reflectionSelectedCount">0</p>
+      </div>
+      <div class="stat">
+        <p class="label">ללא מספר טלפון</p>
+        <p class="value" id="reflectionNoPhoneCount">0</p>
+      </div>
+    </div>
+    <div class="dept-toolbar" style="margin-top:12px;">
+      <button class="primary-movement" id="sendReflectionBtn">שלח לנבחרים בוואטסאפ</button>
+      <span class="muted" id="reflectionSendStatus"></span>
+    </div>
+
+    <h2 style="margin-top:36px; margin-bottom:12px;">מעקב אישורים</h2>
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">אצווה</span>
+        <select id="reflectionBatchSelect"></select>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="reflectionApprovalTable">
+          <thead>
+            <tr>
+              <th>שם מלא</th>
+              <th>מחלקה</th>
+              <th>נשלח</th>
+              <th>סטטוס אישור</th>
+            </tr>
+          </thead>
+          <tbody id="reflectionApprovalTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /reflectionView -->
 
 </div>
 
@@ -2878,6 +3016,7 @@ document.getElementById('navWorkDays').addEventListener('click', () => switchTab
 document.getElementById('navDashboard').addEventListener('click', () => switchTab('dashboard'));
 document.getElementById('navUsers').addEventListener('click', () => switchTab('users'));
 document.getElementById('navMessages').addEventListener('click', () => switchTab('messages'));
+document.getElementById('navReflection').addEventListener('click', () => switchTab('reflection'));
 
 function switchTab(tab) {
   const views = {
@@ -2887,6 +3026,7 @@ function switchTab(tab) {
     dashboard: document.getElementById('dashboardView'),
     users: document.getElementById('usersView'),
     messages: document.getElementById('messagesView'),
+    reflection: document.getElementById('reflectionView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -2895,6 +3035,7 @@ function switchTab(tab) {
     dashboard: document.getElementById('navDashboard'),
     users: document.getElementById('navUsers'),
     messages: document.getElementById('navMessages'),
+    reflection: document.getElementById('navReflection'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -2905,6 +3046,7 @@ function switchTab(tab) {
   if (tab === 'dashboard') initDashboardTabIfNeeded();
   if (tab === 'users') initUsersTabIfNeeded();
   if (tab === 'messages') initMessagesTabIfNeeded();
+  if (tab === 'reflection') initReflectionTabIfNeeded();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -3845,6 +3987,324 @@ async function refreshMessageHistory() {
   }
 }
 
+/* ================= REFLECTION ("שיקוף שכר") ================= */
+// עצמאי לגמרי מהמסך הראשי: קובץ נפרד, לא נוגע ב-salesRows/serviceRows/tnuat/meuhedet.
+// דוח נוכחות יומי: C=ת"ז, D=שם משפחה, E=שם פרטי, G=מחלקה, L=תאריך, M=כניסה, N=יציאה,
+// S=נוכח לשכר, T=סה"כ לשכר. שורת הכותרות מזוהה דינמית (לא הונח מספר שורה קבוע).
+let reflectionEmployees = [];
+let reflectionSelectedIds = new Set();
+let reflectionPhoneByEmpId = {};
+let reflectionTabLoaded = false;
+
+function excelSerialToISO(serial) {
+  // תיקון: הדוח מייצא כל תאריך יום אחד מוקדם מדי - מזיזים יום אחד קדימה.
+  const utcDays = Math.floor(serial - 25569) + 1;
+  return new Date(utcDays * 86400 * 1000).toISOString().slice(0, 10);
+}
+function timeFracToHHMM(frac) {
+  if (frac === null || frac === undefined || frac === '') return null;
+  const totalMin = Math.round(Number(frac) * 24 * 60);
+  if (isNaN(totalMin)) return null;
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+function classifyReflectionDay(S, T) {
+  if (S !== null && S !== undefined && S !== '' && !isNaN(S)) return 'worked';
+  if (T !== null && T !== undefined && T !== '' && !isNaN(T)) return 'leave';
+  return 'off';
+}
+function last4Digits(empId) {
+  const digits = String(empId).replace(/\D/g, '');
+  return digits.slice(-4).padStart(4, '0');
+}
+
+function parseReflectionFile(data) {
+  const headerIdx = data.findIndex(r => r && r[2] === 'עובד' && r.includes('תאריך'));
+  if (headerIdx === -1) return [];
+  const out = [];
+  data.slice(headerIdx + 1).forEach(r => {
+    if (!r) return;
+    const empId = r[2];
+    if (empId === null || empId === undefined || empId === '') return;
+    const dateSerial = r[11];
+    if (dateSerial === null || dateSerial === undefined || dateSerial === '') return;
+    const S = (r[18] === null || r[18] === '' || r[18] === undefined) ? null : Number(r[18]);
+    const T = (r[19] === null || r[19] === '' || r[19] === undefined) ? null : Number(r[19]);
+    out.push({
+      empId: String(empId).trim(),
+      lastName: r[3] != null ? String(r[3]).trim() : '',
+      firstName: r[4] != null ? String(r[4]).trim() : '',
+      dept: normalizeDept(r[6] != null ? String(r[6]) : ''),
+      dateSerial, checkIn: r[12], checkOut: r[13], S, T,
+    });
+  });
+  return out;
+}
+
+function buildReflectionEmployees(parsedRows) {
+  const byEmp = {};
+  parsedRows.forEach(r => {
+    if (!byEmp[r.empId]) byEmp[r.empId] = { empId: r.empId, firstName: r.firstName, lastName: r.lastName, dept: r.dept, days: [] };
+    const emp = byEmp[r.empId];
+    if (r.firstName) emp.firstName = r.firstName;
+    if (r.lastName) emp.lastName = r.lastName;
+    const kind = classifyReflectionDay(r.S, r.T);
+    emp.days.push({ date: excelSerialToISO(r.dateSerial), in: timeFracToHHMM(r.checkIn), out: timeFracToHHMM(r.checkOut), S: r.S, T: r.T, kind });
+  });
+  return Object.values(byEmp).map(e => {
+    e.days.sort((a, b) => a.date.localeCompare(b.date));
+    e.fullName = normalizeName(`${e.firstName} ${e.lastName}`);
+    e.workedDays = e.days.filter(d => d.kind === 'worked').length;
+    e.leaveDays = e.days.filter(d => d.kind === 'leave').length;
+    e.totalHours = e.days.reduce((sum, d) => d.kind === 'worked' ? sum + d.S : sum, 0);
+    return e;
+  });
+}
+
+async function loadReflectionPhones() {
+  try {
+    const { data, error } = await sb.from('agents').select('emp_id, phone');
+    if (error) throw error;
+    reflectionPhoneByEmpId = {};
+    (data || []).forEach(a => { reflectionPhoneByEmpId[String(a.emp_id).trim()] = a.phone || ''; });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function populateReflectionDeptFilter() {
+  const sel = document.getElementById('reflectionDeptFilter');
+  const prevVal = sel.value;
+  const depts = [...new Set(reflectionEmployees.map(e => e.dept))].sort();
+  sel.innerHTML = '<option value="all">הכל</option>' + depts.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (depts.includes(prevVal)) sel.value = prevVal;
+}
+
+function currentReflectionFilterList() {
+  const deptFilter = document.getElementById('reflectionDeptFilter').value;
+  return reflectionEmployees.filter(e => deptFilter === 'all' || e.dept === deptFilter);
+}
+
+function renderReflectionTable() {
+  const tbody = document.getElementById('reflectionTbody');
+  tbody.innerHTML = '';
+  let noPhone = 0;
+  const list = currentReflectionFilterList();
+  list.forEach(e => {
+    const phone = reflectionPhoneByEmpId[e.empId] || '';
+    if (!phone) noPhone++;
+    const tr = document.createElement('tr');
+    tr.className = reflectionSelectedIds.has(e.empId) ? 'refl-row-selected' : '';
+    tr.innerHTML = `
+      <td style="text-align:center;"><input type="checkbox" data-emp="${e.empId}" ${reflectionSelectedIds.has(e.empId) ? 'checked' : ''} ${phone ? '' : 'disabled'} title="${phone ? '' : 'אין מספר טלפון - לא ניתן לשלוח'}" /></td>
+      <td>${e.fullName || '(ללא שם)'}</td>
+      <td class="num">${e.empId}</td>
+      <td class="muted">${e.dept}</td>
+      <td class="num">${phone || '⚠️ אין טלפון'}</td>
+      <td class="num">${e.workedDays}</td>
+      <td class="num">${fmt(e.totalHours, 2)}</td>
+      <td class="num">${e.leaveDays}</td>
+      <td><button class="refl-view-btn" data-view="${e.empId}">צפה בפירוט</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('reflectionNoPhoneCount').textContent = noPhone;
+  document.getElementById('reflectionSelectedCount').textContent = reflectionSelectedIds.size;
+  tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const empId = e.target.dataset.emp;
+      if (e.target.checked) reflectionSelectedIds.add(empId); else reflectionSelectedIds.delete(empId);
+      renderReflectionTable();
+    });
+  });
+  tbody.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => showReflectionDetail(btn.dataset.view));
+  });
+}
+
+function showReflectionDetail(empId) {
+  const e = reflectionEmployees.find(x => x.empId === empId);
+  if (!e) return;
+  document.getElementById('reflectionDetailName').textContent = e.fullName || '(ללא שם)';
+  document.getElementById('reflectionDetailDept').textContent = e.dept;
+  document.getElementById('reflectionDetailTbody').innerHTML = e.days.map(d => {
+    const [, m, dd] = d.date.split('-');
+    let sCell;
+    if (d.kind === 'worked') sCell = `<span class="num">${fmt(d.S, 2)}</span>`;
+    else if (d.kind === 'leave') sCell = `<span class="refl-day-cell"><span class="refl-badge leave">חופש / מחלה</span><span class="refl-leave-note">יש לוודא בסינריון שמוזן אישור מחלה / חופשה בתשלום</span></span>`;
+    else sCell = `<span class="refl-badge off">—</span>`;
+    return `
+      <tr>
+        <td class="num">${dd}/${m}</td>
+        <td class="num">${e.empId}</td>
+        <td>${e.fullName}</td>
+        <td class="muted">${e.dept}</td>
+        <td class="num">${d.in || '—'}</td>
+        <td class="num">${d.out || '—'}</td>
+        <td>${sCell}</td>
+      </tr>
+    `;
+  }).join('');
+  document.getElementById('reflectionDetailTfoot').innerHTML = `<tr><td colspan="6">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(e.totalHours, 2)}</td></tr>`;
+  document.getElementById('reflectionDetailOverlay').style.display = 'flex';
+}
+document.getElementById('closeReflectionDetailBtn').addEventListener('click', () => {
+  document.getElementById('reflectionDetailOverlay').style.display = 'none';
+});
+
+document.getElementById('uploadReflectionBtn').addEventListener('click', () => document.getElementById('reflectionInput').click());
+document.getElementById('reflectionInput').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const banner = document.getElementById('reflectionBanner');
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = fixSheetRange(wb.Sheets[wb.SheetNames[0]]);
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+    const parsed = parseReflectionFile(data);
+    if (!parsed.length) {
+      banner.innerHTML = '<div class="banner error">לא נמצאו שורות נתונים בקובץ. ודא שזהו קובץ דוח נוכחות יומי תקין.</div>';
+      return;
+    }
+    reflectionEmployees = buildReflectionEmployees(parsed);
+    reflectionSelectedIds = new Set();
+    await loadReflectionPhones();
+    populateReflectionDeptFilter();
+    renderReflectionTable();
+    banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים מהקובץ.</div>`;
+  } catch (err) {
+    console.error(err);
+    banner.innerHTML = '<div class="banner error">שגיאה בקריאת הקובץ.</div>';
+  }
+  e.target.value = '';
+});
+
+document.getElementById('reflectionDeptFilter').addEventListener('change', renderReflectionTable);
+document.getElementById('reflectionSelectAllCheckbox').addEventListener('change', (e) => {
+  currentReflectionFilterList().forEach(x => {
+    if (!reflectionPhoneByEmpId[x.empId]) return;
+    if (e.target.checked) reflectionSelectedIds.add(x.empId); else reflectionSelectedIds.delete(x.empId);
+  });
+  renderReflectionTable();
+});
+document.getElementById('reflectionSelectAllBtn').addEventListener('click', () => {
+  reflectionEmployees.forEach(x => { if (reflectionPhoneByEmpId[x.empId]) reflectionSelectedIds.add(x.empId); });
+  renderReflectionTable();
+});
+document.getElementById('reflectionClearAllBtn').addEventListener('click', () => {
+  reflectionSelectedIds.clear();
+  renderReflectionTable();
+});
+
+document.getElementById('sendReflectionBtn').addEventListener('click', async () => {
+  const toSend = reflectionEmployees.filter(e => reflectionSelectedIds.has(e.empId) && reflectionPhoneByEmpId[e.empId]);
+  const statusEl = document.getElementById('reflectionSendStatus');
+  if (toSend.length === 0) {
+    statusEl.textContent = 'לא נבחרו נציגים עם מספר טלפון לשליחה.';
+    return;
+  }
+  if (!confirm(`לשלוח שיקוף שעות ל-${toSend.length} נציגים בוואטסאפ?`)) return;
+
+  const btn = document.getElementById('sendReflectionBtn');
+  btn.disabled = true;
+  const batchLabel = `שיקוף ${new Date().toLocaleDateString('he-IL')}`;
+  const { data: batch, error: batchErr } = await sb.from('reflection_batches').insert({ label: batchLabel }).select('id').single();
+  if (batchErr) {
+    console.error(batchErr);
+    statusEl.textContent = 'שגיאה ביצירת אצווה. ודא שה-SQL של פיצ׳ר השיקוף רץ בהצלחה.';
+    btn.disabled = false;
+    return;
+  }
+
+  let sent = 0, failed = 0;
+  for (let i = 0; i < toSend.length; i++) {
+    const e = toSend[i];
+    statusEl.textContent = `שולח ${i + 1}/${toSend.length}…`;
+    try {
+      const { data: empRow, error: empErr } = await sb.from('reflection_employees').insert({
+        batch_id: batch.id,
+        emp_id: e.empId,
+        full_name: e.fullName,
+        department: e.dept,
+        phone: reflectionPhoneByEmpId[e.empId],
+        last4_id: last4Digits(e.empId),
+      }).select('id, token').single();
+      if (empErr) throw empErr;
+
+      const dayRows = e.days.map(d => ({
+        employee_id: empRow.id,
+        work_date: d.date,
+        check_in: d.in,
+        check_out: d.out,
+        hours: d.kind === 'worked' ? d.S : null,
+        leave_total: d.kind === 'leave' ? d.T : null,
+        kind: d.kind,
+      }));
+      const { error: daysErr } = await sb.from('reflection_days').insert(dayRows);
+      if (daysErr) throw daysErr;
+
+      const link = `https://adir2112-blip.github.io/bonusim1/reflection.html?t=${empRow.token}`;
+      const message = `שלום ${e.firstName || e.fullName},\nמצורף קישור לאישור שעות העבודה:\n${link}`;
+      const result = await sendWhatsAppMessage(reflectionPhoneByEmpId[e.empId], message);
+      await sb.from('reflection_employees').update({
+        sent_at: result.ok ? new Date().toISOString() : null,
+        send_status: result.ok ? 'sent' : 'failed',
+      }).eq('id', empRow.id);
+      if (result.ok) sent++; else failed++;
+    } catch (err) {
+      console.error(err);
+      failed++;
+    }
+    await new Promise(r => setTimeout(r, 1200)); // השהיה קטנה בין הודעות כדי לא להיראות כספאם
+  }
+
+  statusEl.textContent = `הסתיים: ${sent} נשלחו בהצלחה, ${failed} נכשלו.`;
+  btn.disabled = false;
+  await populateReflectionBatchSelect();
+});
+
+async function populateReflectionBatchSelect() {
+  const sel = document.getElementById('reflectionBatchSelect');
+  try {
+    const { data, error } = await sb.from('reflection_batches').select('id, label, created_at').order('created_at', { ascending: false });
+    if (error) throw error;
+    sel.innerHTML = (data || []).map(b => `<option value="${b.id}">${b.label} (${new Date(b.created_at).toLocaleDateString('he-IL')})</option>`).join('');
+    if (data && data.length) await renderReflectionApprovalTable(data[0].id);
+    else document.getElementById('reflectionApprovalTbody').innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">אין עדיין אצוות שיקוף שנשלחו.</td></tr>';
+  } catch (err) {
+    console.error(err);
+  }
+}
+async function renderReflectionApprovalTable(batchId) {
+  const tbody = document.getElementById('reflectionApprovalTbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+  try {
+    const { data, error } = await sb.from('reflection_employees').select('full_name, department, sent_at, approved_at').eq('batch_id', batchId).order('full_name');
+    if (error) throw error;
+    tbody.innerHTML = '';
+    (data || []).forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.full_name}</td>
+        <td class="muted">${r.department}</td>
+        <td class="num">${r.sent_at ? new Date(r.sent_at).toLocaleString('he-IL') : '—'}</td>
+        <td>${r.approved_at ? `<span class="refl-approved">אושר ב-${new Date(r.approved_at).toLocaleDateString('he-IL')}</span>` : '<span class="refl-pending">טרם אושר</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="4" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינה.</td></tr>';
+  }
+}
+document.getElementById('reflectionBatchSelect').addEventListener('change', (e) => renderReflectionApprovalTable(e.target.value));
+
+async function initReflectionTabIfNeeded() {
+  if (reflectionTabLoaded) return;
+  reflectionTabLoaded = true;
+  await populateReflectionBatchSelect();
+}
 
 </script>
 </body>

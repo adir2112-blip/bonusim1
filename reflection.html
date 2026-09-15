@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>שיקוף שעות עבודה</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗓️</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --bg: #F6F4EE;
+    --surface: #FFFFFF;
+    --surface-2: #FBFAF6;
+    --border: #E4DFD3;
+    --border-strong: #CFC7B4;
+    --text: #26241F;
+    --text-muted: #7A766B;
+    --accent: #2A6BB0;
+    --accent-dark: #1F4E82;
+    --accent-bg: #DCE8F2;
+    --leave-bg: #FBF0DD;
+    --leave-text: #8A5A12;
+    --leave-border: #E9C77B;
+    --off-text: #A9A499;
+    --success-bg: #E9F1E3;
+    --success-text: #3C6B2E;
+    --danger-bg: #FBEAE7;
+    --danger-text: #A33B2A;
+    --shadow-sm: 0 1px 2px rgba(38,36,31,.05), 0 1px 3px rgba(38,36,31,.07);
+    --shadow-md: 0 6px 16px rgba(38,36,31,.08);
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    direction: rtl;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+    padding: 28px 16px 60px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  .pin-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); padding: 32px 30px; max-width: 380px; margin: 60px auto;
+  }
+  .pin-card h2 { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
+  .pin-card p.sub { font-size: 13px; color: var(--text-muted); margin: 0 0 22px; line-height: 1.6; }
+  .pin-field label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px; }
+  .pin-field input {
+    width: 100%; padding: 12px; font-size: 22px; text-align: center; letter-spacing: 6px;
+    border: 1px solid var(--border); border-radius: 8px; font-variant-numeric: tabular-nums;
+  }
+  .pin-error { color: var(--danger-text); font-size: 12.5px; min-height: 16px; margin: 10px 0 0; }
+  .pin-btn {
+    width: 100%; margin-top: 16px; padding: 11px; font-size: 14px; font-weight: 600;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer;
+  }
+  .pin-btn:disabled { opacity: .6; cursor: default; }
+
+  header { margin-bottom: 20px; }
+  .eyebrow { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; margin: 0 0 6px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.3px; }
+  .h1-sub { font-size: 13.5px; color: var(--text-muted); margin: 0; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 560px) { .stats { grid-template-columns: 1fr; } }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+  .stat .label { font-size: 12px; color: var(--text-muted); margin: 0 0 6px; font-weight: 600; }
+  .stat .value { font-size: 22px; font-weight: 700; margin: 0; font-variant-numeric: tabular-nums; }
+
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 480px; }
+  thead th {
+    text-align: right; font-weight: 700; font-size: 10.5px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .03em; padding: 11px 12px;
+    border-bottom: 2px solid var(--accent); background: var(--accent-bg); white-space: nowrap;
+  }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) { background: var(--surface-2); }
+  tbody tr.is-off td { color: var(--off-text); }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  tfoot td { padding: 11px 12px; font-weight: 700; background: var(--accent-bg); border-top: 2px solid var(--accent); }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+  .badge.leave { background: var(--leave-bg); color: var(--leave-text); border: 1px solid var(--leave-border); }
+  .badge.off { color: var(--off-text); font-weight: 500; }
+  .s-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .leave-note { font-size: 11px; color: var(--leave-text); opacity: .85; }
+
+  .approve-box {
+    margin-top: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .approve-box p { margin: 0; font-size: 13.5px; color: var(--text-muted); max-width: 480px; line-height: 1.6; }
+  #approveBtn {
+    padding: 11px 22px; font-size: 14px; font-weight: 600; background: var(--success-text);
+    color: #fff; border: none; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  }
+  #approveBtn:disabled { opacity: .6; cursor: default; }
+  .approved-flag { color: var(--success-text); font-weight: 700; font-size: 14px; }
+
+  .state-msg { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="pinScreen" class="pin-card">
+    <h2>שיקוף שעות עבודה</h2>
+    <p class="sub">לצפייה בפרטים, הזן את 4 הספרות האחרונות של תעודת הזהות שלך.</p>
+    <div class="pin-field">
+      <label for="pinInput">4 ספרות אחרונות בת"ז</label>
+      <input type="text" id="pinInput" inputmode="numeric" maxlength="4" autocomplete="off" />
+    </div>
+    <p class="pin-error" id="pinError"></p>
+    <button class="pin-btn" id="pinSubmitBtn">כניסה</button>
+  </div>
+
+  <div id="contentScreen" style="display:none;">
+    <header>
+      <p class="eyebrow">שיקוף שעות עבודה</p>
+      <h1 id="empName"></h1>
+      <p class="h1-sub" id="empDept"></p>
+    </header>
+
+    <div class="stats" id="statsRow"></div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>כניסה</th>
+              <th>יציאה</th>
+              <th>נוכח לשכר</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="approve-box">
+      <p>אם בדקת את הפרטים ואתה מאשר שהם תואמים למה שביצעת בפועל, לחץ לאישור.</p>
+      <div id="approveArea"></div>
+    </div>
+  </div>
+
+  <div id="errorScreen" class="state-msg" style="display:none;"></div>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://pmsrezoyzycxgerxbtka.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtc3Jlem95enljeGdlcnhidGthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzAwMzAsImV4cCI6MjA5NzIwNjAzMH0.lo6n7u3XIHHMSrJzzvEQntrqR2Had78HYjAL8JXibeo';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const token = new URLSearchParams(location.search).get('t');
+  let reflectionRows = [];
+  let currentApprovedAt = null;
+
+  function fmt(n) {
+    return Number(n).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function showError(msg) {
+    document.getElementById('pinScreen').style.display = 'none';
+    document.getElementById('contentScreen').style.display = 'none';
+    const el = document.getElementById('errorScreen');
+    el.style.display = 'block';
+    el.textContent = msg;
+  }
+
+  if (!token) {
+    showError('קישור לא תקין. ודא שפתחת את הקישור המלא שקיבלת בהודעה.');
+  }
+
+  document.getElementById('pinSubmitBtn').addEventListener('click', submitPin);
+  document.getElementById('pinInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitPin();
+  });
+
+  async function submitPin() {
+    const pin = document.getElementById('pinInput').value.trim();
+    const errEl = document.getElementById('pinError');
+    if (!/^\d{4}$/.test(pin)) {
+      errEl.textContent = 'יש להזין בדיוק 4 ספרות.';
+      return;
+    }
+    const btn = document.getElementById('pinSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'בודק…';
+    errEl.textContent = '';
+    try {
+      const { data, error } = await sb.rpc('get_reflection', { p_token: token, p_last4: pin });
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        errEl.textContent = 'הפרטים שגויים, או שהקישור פג תוקף. נסה שוב.';
+        btn.disabled = false;
+        btn.textContent = 'כניסה';
+        return;
+      }
+      reflectionRows = data;
+      renderContent();
+    } catch (err) {
+      console.error(err);
+      errEl.textContent = 'שגיאה בבדיקה. נסה שוב מאוחר יותר.';
+      btn.disabled = false;
+      btn.textContent = 'כניסה';
+    }
+  }
+
+  function renderContent() {
+    document.getElementById('pinScreen').style.display = 'none';
+    document.getElementById('contentScreen').style.display = 'block';
+
+    const first = reflectionRows[0];
+    document.getElementById('empName').textContent = first.full_name || '';
+    document.getElementById('empDept').textContent = first.department || '';
+    currentApprovedAt = first.approved_at || null;
+
+    let workedDays = 0, leaveDays = 0, totalHours = 0;
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = reflectionRows.map(r => {
+      const [y, m, d] = String(r.work_date).split('-');
+      let cell, rowClass = '';
+      if (r.kind === 'worked') {
+        workedDays++; totalHours += Number(r.hours) || 0;
+        cell = `<span class="num">${fmt(r.hours)}</span>`;
+      } else if (r.kind === 'leave') {
+        leaveDays++;
+        cell = `<span class="s-cell"><span class="badge leave">חופש / מחלה</span><span class="leave-note">יש לוודא בסינריון שמוזן אישור מחלה / חופשה בתשלום</span></span>`;
+      } else {
+        rowClass = 'is-off';
+        cell = `<span class="badge off">—</span>`;
+      }
+      return `
+        <tr class="${rowClass}">
+          <td class="num">${d}/${m}</td>
+          <td class="num">${r.check_in || '—'}</td>
+          <td class="num">${r.check_out || '—'}</td>
+          <td>${cell}</td>
+        </tr>
+      `;
+    }).join('');
+
+    document.getElementById('tfoot').innerHTML = `<tr><td colspan="3">סה״כ נוכח לשכר החודש</td><td class="num">${fmt(totalHours)}</td></tr>`;
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat"><p class="label">ימי עבודה בפועל</p><p class="value">${workedDays}</p></div>
+      <div class="stat"><p class="label">סה״כ שעות</p><p class="value">${fmt(totalHours)}</p></div>
+      <div class="stat"><p class="label">ימי חופש / מחלה</p><p class="value">${leaveDays}</p></div>
+    `;
+
+    renderApproveArea();
+  }
+
+  function renderApproveArea() {
+    const area = document.getElementById('approveArea');
+    if (currentApprovedAt) {
+      const d = new Date(currentApprovedAt).toLocaleDateString('he-IL');
+      area.innerHTML = `<span class="approved-flag">✓ אושר בתאריך ${d}</span>`;
+      return;
+    }
+    area.innerHTML = `<button id="approveBtn">אני מאשר שבדקתי את השעות</button>`;
+    document.getElementById('approveBtn').addEventListener('click', async (e) => {
+      const pin = document.getElementById('pinInput').value.trim();
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = 'שולח אישור…';
+      try {
+        const { data, error } = await sb.rpc('confirm_reflection', { p_token: token, p_last4: pin });
+        if (error || !data) throw error || new Error('confirm failed');
+        currentApprovedAt = new Date().toISOString();
+        renderApproveArea();
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        btn.textContent = 'אני מאשר שבדקתי את השעות';
+        alert('שגיאה באישור. נסה שוב.');
+      }
+    });
+  }
+</script>
+</body>
+</html>
