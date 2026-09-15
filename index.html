@@ -4085,6 +4085,33 @@ function currentReflectionFilterList() {
   return reflectionEmployees.filter(e => deptFilter === 'all' || e.dept === deptFilter);
 }
 
+// שמירת טיוטת התצוגה בדפדפן (לא בשרת) כדי שרענון דף לא ימחק קובץ שכבר נטען.
+const REFLECTION_DRAFT_KEY = 'reflectionDraft_v1';
+function saveReflectionDraft() {
+  try {
+    localStorage.setItem(REFLECTION_DRAFT_KEY, JSON.stringify({
+      employees: reflectionEmployees,
+      selected: [...reflectionSelectedIds],
+    }));
+  } catch (err) {
+    console.error(err);
+  }
+}
+function loadReflectionDraft() {
+  try {
+    const raw = localStorage.getItem(REFLECTION_DRAFT_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.employees) || parsed.employees.length === 0) return false;
+    reflectionEmployees = parsed.employees;
+    reflectionSelectedIds = new Set(parsed.selected || []);
+    return true;
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+}
+
 function renderReflectionTable() {
   const tbody = document.getElementById('reflectionTbody');
   tbody.innerHTML = '';
@@ -4110,6 +4137,7 @@ function renderReflectionTable() {
   });
   document.getElementById('reflectionNoPhoneCount').textContent = noPhone;
   document.getElementById('reflectionSelectedCount').textContent = reflectionSelectedIds.size;
+  saveReflectionDraft();
   tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', (e) => {
       const empId = e.target.dataset.emp;
@@ -4303,6 +4331,12 @@ document.getElementById('reflectionBatchSelect').addEventListener('change', (e) 
 async function initReflectionTabIfNeeded() {
   if (reflectionTabLoaded) return;
   reflectionTabLoaded = true;
+  if (loadReflectionDraft()) {
+    await loadReflectionPhones();
+    populateReflectionDeptFilter();
+    renderReflectionTable();
+    document.getElementById('reflectionBanner').innerHTML = '<div class="banner ok">שוחזרה טעינה קודמת שנשמרה בדפדפן הזה.</div>';
+  }
   await populateReflectionBatchSelect();
 }
 
