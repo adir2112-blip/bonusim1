@@ -511,6 +511,11 @@
   table.summary-table.theme-sales tbody tr:nth-child(even) { background: #FBF3E9; }
   table.summary-table.theme-sales tbody tr:hover { background: var(--accent-sales-bg); }
   table.summary-table.theme-sales tfoot td { background: #F7ECDD; border-top: 2px solid var(--accent-sales); }
+  .summary-modal-header.theme-movement { background: linear-gradient(135deg, var(--accent-movement), var(--accent-movement-dark)); }
+  table.summary-table.theme-movement thead th { background: linear-gradient(135deg, var(--accent-movement), var(--accent-movement-dark)); }
+  table.summary-table.theme-movement tbody tr:nth-child(even) { background: #F2F6FA; }
+  table.summary-table.theme-movement tbody tr:hover { background: var(--accent-movement-bg); }
+  table.summary-table.theme-movement tfoot td { background: #EAF1F8; border-top: 2px solid var(--accent-movement); }
   .summary-remove-col { width: 40px; text-align: center; }
   .summary-remove-btn {
     border: none; background: transparent; color: var(--danger-text);
@@ -1270,7 +1275,7 @@
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
   <div id="reflectionDetailOverlay" class="summary-overlay" style="display:none;">
     <div class="summary-modal">
-      <div class="summary-modal-header theme-sales">
+      <div class="summary-modal-header theme-movement">
         <div class="summary-modal-heading">
           <span class="summary-modal-icon">🗓️</span>
           <div>
@@ -1284,7 +1289,7 @@
       </div>
       <div class="summary-modal-body">
         <div class="summary-table-card">
-          <table class="summary-table theme-sales">
+          <table class="summary-table theme-movement">
             <thead>
               <tr>
                 <th>תאריך</th>
