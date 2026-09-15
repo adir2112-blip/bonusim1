@@ -1221,6 +1221,7 @@
         <span class="toolbar-label">דיווח</span>
         <select id="reflectionBatchSelect" style="min-width:160px;"></select>
         <button id="reflectionRenameBatchBtn" title="שנה את שם הדיווח הנוכחי">✏️ שנה שם</button>
+        <button id="reflectionDeleteBatchBtn" title="מחק את הדיווח הנוכחי לצמיתות" style="border-color:#C0392B; color:#C0392B;">🗑️ מחק דיווח</button>
       </div>
       <div class="divider-v"></div>
       <div class="toolbar-group">
@@ -4158,7 +4159,9 @@ async function createReflectionBatch(label) {
 }
 
 // שומר את כל הנציגים+הימים שנפרסרו מהקובץ תחת האצווה, ומעדכן e.dbId/e.token לכל נציג.
+// מחזיר {ok, failed, firstError} כדי שאפשר יהיה להציג בפועל אם משהו לא נשמר (ולמה).
 async function persistReflectionBatchData(batchId) {
+  let ok = 0, failed = 0, firstError = null;
   await Promise.all(reflectionEmployees.map(async (e) => {
     try {
       const { data: empRow, error } = await sb.from('reflection_employees').insert({
@@ -4185,10 +4188,14 @@ async function persistReflectionBatchData(batchId) {
         const { error: daysErr } = await sb.from('reflection_days').insert(dayRows);
         if (daysErr) throw daysErr;
       }
+      ok++;
     } catch (err) {
       console.error('Failed to persist reflection employee', e.empId, err);
+      failed++;
+      if (!firstError) firstError = (err && (err.message || err.details || err.hint)) || String(err);
     }
   }));
+  return { ok, failed, firstError };
 }
 
 // טוען דיווח קיים מה-DB לתוך המסך (בלי קריאה מחדש של קובץ).
@@ -4247,7 +4254,11 @@ document.getElementById('reflectionBatchSelect').addEventListener('change', asyn
     await loadReflectionBatchFromDb(currentReflectionBatchId);
     populateReflectionDeptFilter();
     renderReflectionTable();
-    banner.innerHTML = '';
+    if (reflectionEmployees.length === 0) {
+      banner.innerHTML = '<div class="banner error">הדיווח הזה ריק (0 נציגים נמצאו במסד הנתונים תחתיו). ייתכן שבעת ההעלאה השמירה נכשלה חלקית - נסה להעלות את הקובץ מחדש.</div>';
+    } else {
+      banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים מהדיווח.</div>`;
+    }
   } catch (err) {
     console.error(err);
     banner.innerHTML = '<div class="banner error">שגיאה בטעינת הדיווח.</div>';
@@ -4272,6 +4283,33 @@ document.getElementById('reflectionRenameBatchBtn').addEventListener('click', as
   }
 });
 
+document.getElementById('reflectionDeleteBatchBtn').addEventListener('click', async () => {
+  if (!currentReflectionBatchId) {
+    alert('אין דיווח פעיל למחיקה.');
+    return;
+  }
+  const sel = document.getElementById('reflectionBatchSelect');
+  const current = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  if (!confirm(`למחוק לצמיתות את הדיווח "${current}"? כל הנתונים שלו (כולל קישורים שכבר נשלחו) יימחקו ולא ניתן יהיה לשחזר.`)) return;
+  try {
+    const { error } = await sb.from('reflection_batches').delete().eq('id', currentReflectionBatchId);
+    if (error) throw error;
+    currentReflectionBatchId = null;
+    reflectionEmployees = [];
+    reflectionSelectedIds = new Set();
+    const remaining = await populateReflectionBatchSelect();
+    if (remaining && remaining.length && currentReflectionBatchId) {
+      await loadReflectionBatchFromDb(currentReflectionBatchId);
+    }
+    populateReflectionDeptFilter();
+    renderReflectionTable();
+    document.getElementById('reflectionBanner').innerHTML = `<div class="banner ok">הדיווח "${current}" נמחק.</div>`;
+  } catch (err) {
+    console.error(err);
+    alert('שגיאה במחיקת הדיווח.');
+  }
+});
+
 document.getElementById('uploadReflectionBtn').addEventListener('click', () => document.getElementById('reflectionInput').click());
 document.getElementById('reflectionInput').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
@@ -4293,11 +4331,15 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
     banner.innerHTML = '<div class="banner ok">שומר את הדיווח…</div>';
     const defaultLabel = `דיווח ${new Date().toLocaleDateString('he-IL')}`;
     const batch = await createReflectionBatch(defaultLabel);
-    await persistReflectionBatchData(batch.id);
+    const persistResult = await persistReflectionBatchData(batch.id);
     await populateReflectionBatchSelect(batch.id);
     populateReflectionDeptFilter();
     renderReflectionTable();
-    banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים ונשמרו כ"<b style="color:#000">${defaultLabel}</b>". אפשר לשנות את השם בכפתור "✏️ שנה שם".</div>`;
+    if (persistResult.failed > 0) {
+      banner.innerHTML = `<div class="banner error">נטענו ${reflectionEmployees.length} נציגים, אבל <b>${persistResult.failed}</b> מהם לא נשמרו במסד הנתונים (${persistResult.ok} כן נשמרו) — הם לא יופיעו אם תחזור לדיווח הזה מאוחר יותר. שגיאה: ${persistResult.firstError || ''}</div>`;
+    } else {
+      banner.innerHTML = `<div class="banner ok">נטענו <b style="color:#000">${reflectionEmployees.length}</b> נציגים ונשמרו כ"<b style="color:#000">${defaultLabel}</b>". אפשר לשנות את השם בכפתור "✏️ שנה שם".</div>`;
+    }
   } catch (err) {
     console.error(err);
     banner.innerHTML = '<div class="banner error">שגיאה בקריאת הקובץ או בשמירתו.</div>';
