@@ -1279,7 +1279,22 @@
         <p class="value" id="reflectionNoPhoneCount">0</p>
       </div>
     </div>
-    <div class="dept-toolbar" style="margin-top:12px;">
+    <h2 style="margin-top:32px; margin-bottom:12px;">תבנית הודעה</h2>
+    <div class="global-toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">תבנית</span>
+        <select id="msgTemplateSelect" style="min-width:220px;"></select>
+        <button id="msgTemplateNewBtn">+ תבנית חדשה</button>
+        <button id="msgTemplateSaveBtn">💾 שמור שינויים</button>
+        <button id="msgTemplateDeleteBtn" style="border-color:#C0392B; color:#C0392B;">🗑️ מחק תבנית</button>
+      </div>
+    </div>
+    <div class="table-card" style="padding:16px;">
+      <textarea id="msgTemplateBody" rows="5" style="width:100%; font-family:inherit; font-size:14px; padding:10px; border:1px solid var(--border); border-radius:7px; resize:vertical;" placeholder="שלום {שם},&#10;מצורף קישור לאישור שעות העבודה:&#10;{קישור}"></textarea>
+      <p class="hint" style="margin-bottom:0;">אפשר להשתמש ב-<code>{שם}</code> ו-<code>{קישור}</code> בתוכן ההודעה - הם יוחלפו אוטומטית בשם הנציג ובקישור האישי שלו בזמן השליחה.</p>
+    </div>
+
+    <div class="dept-toolbar" style="margin-top:20px;">
       <button class="primary-movement" id="sendReflectionBtn">שלח לנבחרים בוואטסאפ</button>
       <span class="muted" id="reflectionSendStatus"></span>
     </div>
@@ -4412,6 +4427,95 @@ document.getElementById('reflectionClearAllBtn').addEventListener('click', () =>
   renderReflectionTable();
 });
 
+/* ================= תבניות הודעה לשיקוף שכר ================= */
+let messageTemplates = [];
+const DEFAULT_TEMPLATE_BODY = 'שלום {שם},\nמצורף קישור לאישור שעות העבודה:\n{קישור}';
+
+async function loadMessageTemplates(selectId) {
+  const sel = document.getElementById('msgTemplateSelect');
+  try {
+    const { data, error } = await sb.from('message_templates').select('id, name, body').order('created_at');
+    if (error) throw error;
+    messageTemplates = data || [];
+    if (messageTemplates.length === 0) {
+      // אין אף תבנית (או שה-SQL עוד לא רץ) - עובדים עם ברירת מחדל זמנית בזיכרון בלבד
+      sel.innerHTML = '<option value="">ברירת מחדל (לא נשמר)</option>';
+      document.getElementById('msgTemplateBody').value = DEFAULT_TEMPLATE_BODY;
+      return;
+    }
+    sel.innerHTML = messageTemplates.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    const target = selectId && messageTemplates.some(t => t.id === selectId) ? selectId : messageTemplates[0].id;
+    sel.value = target;
+    document.getElementById('msgTemplateBody').value = messageTemplates.find(t => t.id === target).body;
+  } catch (err) {
+    console.error('loadMessageTemplates (ייתכן שטבלת message_templates עוד לא נוצרה):', err);
+    sel.innerHTML = '<option value="">ברירת מחדל (לא נשמר)</option>';
+    document.getElementById('msgTemplateBody').value = DEFAULT_TEMPLATE_BODY;
+  }
+}
+
+document.getElementById('msgTemplateSelect').addEventListener('change', (e) => {
+  const t = messageTemplates.find(x => x.id === e.target.value);
+  document.getElementById('msgTemplateBody').value = t ? t.body : DEFAULT_TEMPLATE_BODY;
+});
+
+document.getElementById('msgTemplateNewBtn').addEventListener('click', async () => {
+  const name = prompt('שם לתבנית החדשה:');
+  if (!name || !name.trim()) return;
+  const body = document.getElementById('msgTemplateBody').value || DEFAULT_TEMPLATE_BODY;
+  try {
+    const { data, error } = await sb.from('message_templates').insert({ name: name.trim(), body }).select('id').single();
+    if (error) throw error;
+    await loadMessageTemplates(data.id);
+  } catch (err) {
+    console.error(err);
+    alert('שגיאה ביצירת תבנית. ודא שהרצת את ה-SQL של טבלת message_templates.');
+  }
+});
+
+document.getElementById('msgTemplateSaveBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('msgTemplateSelect');
+  const id = sel.value;
+  const body = document.getElementById('msgTemplateBody').value;
+  if (!id) {
+    alert('אין תבנית שמורה נבחרת - לחץ "תבנית חדשה" כדי לשמור את התוכן הזה בתור תבנית.');
+    return;
+  }
+  try {
+    await sb.from('message_templates').update({ body, updated_at: new Date().toISOString() }).eq('id', id);
+    await loadMessageTemplates(id);
+    alert('התבנית נשמרה.');
+  } catch (err) {
+    console.error(err);
+    alert('שגיאה בשמירת התבנית.');
+  }
+});
+
+document.getElementById('msgTemplateDeleteBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('msgTemplateSelect');
+  const id = sel.value;
+  const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  if (!id) return;
+  if (messageTemplates.length <= 1) {
+    alert('לא ניתן למחוק את התבנית האחרונה.');
+    return;
+  }
+  if (!confirm(`למחוק לצמיתות את התבנית "${name}"?`)) return;
+  try {
+    await sb.from('message_templates').delete().eq('id', id);
+    await loadMessageTemplates();
+  } catch (err) {
+    console.error(err);
+    alert('שגיאה במחיקת התבנית.');
+  }
+});
+
+function buildReflectionMessage(templateBody, e, link) {
+  return (templateBody || DEFAULT_TEMPLATE_BODY)
+    .replaceAll('{שם}', e.firstName || e.fullName || '')
+    .replaceAll('{קישור}', link);
+}
+
 document.getElementById('sendReflectionBtn').addEventListener('click', async () => {
   const toSend = reflectionEmployees.filter(e => reflectionSelectedIds.has(e.empId) && reflectionPhoneByEmpId[e.empId] && !e.sentAt && e.dbId && e.token);
   const statusEl = document.getElementById('reflectionSendStatus');
@@ -4421,6 +4525,7 @@ document.getElementById('sendReflectionBtn').addEventListener('click', async () 
   }
   if (!confirm(`לשלוח שיקוף שעות ל-${toSend.length} נציגים בוואטסאפ?`)) return;
 
+  const templateBody = document.getElementById('msgTemplateBody').value || DEFAULT_TEMPLATE_BODY;
   const btn = document.getElementById('sendReflectionBtn');
   btn.disabled = true;
   let sent = 0, failed = 0;
@@ -4429,7 +4534,7 @@ document.getElementById('sendReflectionBtn').addEventListener('click', async () 
     statusEl.textContent = `שולח ${i + 1}/${toSend.length}…`;
     try {
       const link = `https://adir2112-blip.github.io/bonusim1/reflection.html?t=${e.token}`;
-      const message = `שלום ${e.firstName || e.fullName},\nמצורף קישור לאישור שעות העבודה:\n${link}`;
+      const message = buildReflectionMessage(templateBody, e, link);
       const result = await sendWhatsAppMessage(reflectionPhoneByEmpId[e.empId], message);
       await sb.from('reflection_employees').update({
         sent_at: result.ok ? new Date().toISOString() : null,
@@ -4462,6 +4567,7 @@ async function initReflectionTabIfNeeded() {
       console.error(err);
     }
   }
+  await loadMessageTemplates();
 }
 
 </script>
