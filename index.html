@@ -1231,6 +1231,7 @@
               <th>סה"כ שעות</th>
               <th>ימי חופש/מחלה</th>
               <th>נשלח</th>
+              <th>נפתח קישור</th>
               <th>סטטוס אישור</th>
               <th></th>
             </tr>
@@ -4144,6 +4145,13 @@ function currentReflectionFilterList() {
 // כך אפשר לעבור בין דיווחים ישנים ולשנות את שמם, לא רק לראות את מה שהועלה עכשיו.
 let currentReflectionBatchId = null;
 
+function openedCellHtml(e) {
+  if (!e.sentAt) return '<span class="muted">—</span>';
+  return e.openedAt
+    ? `<span class="refl-approved" title="${new Date(e.openedAt).toLocaleString('he-IL')}">כן</span>`
+    : '<span class="muted">לא</span>';
+}
+
 function statusCellHtml(e) {
   if (e.approvedAt) return `<span class="refl-approved">אושר ב-${new Date(e.approvedAt).toLocaleDateString('he-IL')}</span>`;
   if (e.disputedAt) return `<span class="refl-disputed" title="${(e.disputeNote || '').replace(/"/g, '&quot;')}">⚠️ דווחה טעות: ${e.disputeNote || ''}</span>`;
@@ -4171,6 +4179,7 @@ function renderReflectionTable() {
       <td class="num">${fmt(e.totalHours, 2)}</td>
       <td class="num">${e.leaveDays}</td>
       <td class="num">${e.sentAt ? new Date(e.sentAt).toLocaleDateString('he-IL') : '—'}</td>
+      <td>${openedCellHtml(e)}</td>
       <td>${statusCellHtml(e)}</td>
       <td><button class="refl-view-btn" data-view="${e.empId}">צפה בפירוט</button></td>
     `;
@@ -4300,7 +4309,7 @@ async function persistReflectionBatchData(batchId) {
 // טוען דיווח קיים מה-DB לתוך המסך (בלי קריאה מחדש של קובץ).
 async function loadReflectionBatchFromDb(batchId) {
   const { data: empRows, error: empErr } = await sb.from('reflection_employees')
-    .select('id, emp_id, full_name, department, phone, token, sent_at, approved_at, disputed_at, dispute_note')
+    .select('id, emp_id, full_name, department, phone, token, sent_at, opened_at, approved_at, disputed_at, dispute_note')
     .eq('batch_id', batchId);
   if (empErr) throw empErr;
   const empIds = (empRows || []).map(e => e.id);
@@ -4319,7 +4328,7 @@ async function loadReflectionBatchFromDb(batchId) {
       .sort((a, b) => a.date.localeCompare(b.date));
     return {
       empId: e.emp_id, fullName: e.full_name, dept: e.department,
-      dbId: e.id, token: e.token, sentAt: e.sent_at,
+      dbId: e.id, token: e.token, sentAt: e.sent_at, openedAt: e.opened_at,
       approvedAt: e.approved_at, disputedAt: e.disputed_at, disputeNote: e.dispute_note,
       days,
       workedDays: days.filter(d => d.kind === 'worked').length,
