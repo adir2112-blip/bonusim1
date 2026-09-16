@@ -2155,6 +2155,26 @@ function fixSheetRange(ws) {
   return ws;
 }
 
+// קבצי .xlsx/.xls אמיתיים הם ארכיון ZIP/OLE עם XML פנימי שכבר מוצהר כ-UTF-8 -
+// אין צורך (ואסור) לנחש להם קידוד. קבצי .csv, לעומת זאת, הם טקסט גולמי בלי
+// שום הצהרת קידוד, ותוכנות ישראליות (כולל אקסל) מייצאות אותם לרוב כ-Windows-1255
+// בלי BOM. כשמפענחים בייטים כאלה כאילו הם UTF-8 מקבלים שמות עבריים פגומים -
+// בדיוק התופעה שגרמה לתווים שבורים בהודעות הוואטסאפ. לכן: אם הבייטים אינם
+// ZIP/OLE, מנסים לפענח כ-UTF-8 בקפדנות (fatal), ואם זה נכשל נופלים חזרה ל-1255.
+function decodeFileText(buf) {
+  const bytes = new Uint8Array(buf);
+  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B) return null; // ZIP (xlsx)
+  if (bytes.length >= 2 && bytes[0] === 0xD0 && bytes[1] === 0xCF) return null; // OLE (xls ישן)
+  let start = 0;
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) start = 3;
+  const slice = bytes.subarray(start);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(slice);
+  } catch (e) {
+    return new TextDecoder('windows-1255').decode(slice);
+  }
+}
+
 function bindFileButton(btnId, inputId, onLoad) {
   document.getElementById(btnId).addEventListener('click', () => document.getElementById(inputId).click());
   document.getElementById(inputId).addEventListener('change', async (e) => {
@@ -2162,7 +2182,8 @@ function bindFileButton(btnId, inputId, onLoad) {
     if (!file) return;
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
+      const text = decodeFileText(buf);
+      const wb = text !== null ? XLSX.read(text, { type: 'string' }) : XLSX.read(buf, { type: 'array' });
       const sheet = fixSheetRange(wb.Sheets[wb.SheetNames[0]]);
       const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
       await onLoad(data);
@@ -3528,14 +3549,24 @@ function normalizePhoneForWhatsApp(phone) {
   return digits;
 }
 
+// רשת הגנה אחרונה לפני היציאה החוצה: אם בכל זאת הגיע לכאן שם/טקסט עם
+// surrogate בודד (למשל משריד קידוד שגוי שלא נתפס בשלב קריאת הקובץ), מסירים
+// אותו כדי לא לשלוח JSON עם תווים לא תקינים לבוט.
+function sanitizeForWhatsApp(str) {
+  return String(str || '')
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 async function sendWhatsAppMessage(phone, message) {
   const normalized = normalizePhoneForWhatsApp(phone);
   if (!normalized) return { ok: false, reason: 'no-phone' };
+  const cleanMessage = sanitizeForWhatsApp(message);
   try {
     const res = await fetch(WHATSAPP_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: normalized, message })
+      body: JSON.stringify({ phone: normalized, message: cleanMessage })
     });
     let bodyText = '';
     try { bodyText = await res.text(); } catch (e) { /* ignore */ }
