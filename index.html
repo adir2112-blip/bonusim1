@@ -3608,7 +3608,7 @@ async function logReflectionMessage(e, message, result) {
       full_name: e.fullName,
       department: e.dept,
       phone: reflectionPhoneByEmpId[e.empId] || '',
-      month: null,
+      month: currentMonth(),
       message: message,
       status: result.ok ? 'sent' : 'failed',
       error_detail: result.ok ? null : `${result.reason || ''}${result.detail ? ' - ' + result.detail : ''}`,
