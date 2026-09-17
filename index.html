@@ -3600,6 +3600,24 @@ async function logMessage(agent, point, message, result) {
   }
 }
 
+async function logReflectionMessage(e, message, result) {
+  try {
+    await sb.from('message_log').insert({
+      agent_id: null,
+      emp_id: e.empId,
+      full_name: e.fullName,
+      department: e.dept,
+      phone: reflectionPhoneByEmpId[e.empId] || '',
+      month: null,
+      message: message,
+      status: result.ok ? 'sent' : 'failed',
+      error_detail: result.ok ? null : `${result.reason || ''}${result.detail ? ' - ' + result.detail : ''}`,
+    });
+  } catch (err) {
+    console.error('Failed to log reflection message:', err);
+  }
+}
+
 document.getElementById('sendWhatsAppBtn').addEventListener('click', async () => {
   if (!selectedAgent || !lastAgentPoint) {
     showBanner('error', 'בחר נציג עם נתונים לפני שליחה.');
@@ -4677,6 +4695,7 @@ document.getElementById('sendReflectionBtn').addEventListener('click', async () 
         sent_at: result.ok ? new Date().toISOString() : null,
         send_status: result.ok ? 'sent' : 'failed',
       }).eq('id', e.dbId);
+      await logReflectionMessage(e, message, result);
       if (result.ok) { sent++; e.sentAt = new Date().toISOString(); } else failed++;
     } catch (err) {
       console.error(err);
