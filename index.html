@@ -593,6 +593,7 @@
     <button class="nav-tab" id="navMessages" type="button">היסטוריית הודעות</button>
     <button class="nav-tab" id="navReflection" type="button">שיקוף שכר</button>
     <button class="nav-tab" id="navExceptions" type="button">התראות חריגות <span id="exceptionsBadge" class="nav-badge" style="display:none;">0</span></button>
+    <button class="nav-tab" id="navSchedule" type="button">הגדרות תזמון</button>
   </div>
 
   <div id="calculatorView">
@@ -1343,6 +1344,63 @@
       </div>
     </div>
   </div><!-- /exceptionsView -->
+
+  <div id="scheduleView" style="display:none;">
+    <h2 style="margin-top:0;">מתי לשלוח שיקוף שכר אוטומטית</h2>
+    <p class="hint">הפייפליין האוטומטי (הורדה מסינריון + העלאה + שליחת וואטסאפ) בודק כל יום אם היום יום ריצה, לפי ההגדרות כאן.</p>
+
+    <div class="table-card" style="padding:20px; max-width:640px;">
+      <p style="font-weight:600; margin:0 0 10px;">ימי שבוע לשליחה</p>
+      <div id="scheduleDaysRow" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px;">
+        <label><input type="checkbox" class="schedule-day-cb" value="0" /> ראשון</label>
+        <label><input type="checkbox" class="schedule-day-cb" value="1" /> שני</label>
+        <label><input type="checkbox" class="schedule-day-cb" value="2" /> שלישי</label>
+        <label><input type="checkbox" class="schedule-day-cb" value="3" /> רביעי</label>
+        <label><input type="checkbox" class="schedule-day-cb" value="4" /> חמישי</label>
+      </div>
+
+      <p style="font-weight:600; margin:0 0 10px;">שעת שליחה</p>
+      <input type="time" id="scheduleSendTime" style="margin-bottom:20px; width:140px;" />
+
+      <label style="display:flex; align-items:center; gap:8px; margin-bottom:20px;">
+        <input type="checkbox" id="scheduleMonthEnd" />
+        שלח גם ביום העסקים האחרון של החודש (גם אם הוא לא יום שנבחר למעלה)
+      </label>
+
+      <button class="primary-movement" id="scheduleSaveBtn">💾 שמור הגדרות</button>
+      <span class="muted" id="scheduleSaveStatus" style="margin-right:8px;"></span>
+    </div>
+
+    <h2 style="margin-top:32px;">ימי חג (לא ישלח בהם)</h2>
+    <p class="hint">מבוסס על הלוח העברי/ישראלי, 5 שנים קדימה. אפשר להוסיף או להסיר ימים ידנית.</p>
+
+    <div class="global-toolbar" style="max-width:640px;">
+      <div class="toolbar-group">
+        <span class="toolbar-label">תאריך</span>
+        <input type="date" id="holidayNewDate" />
+      </div>
+      <div class="toolbar-group" style="flex:1;">
+        <span class="toolbar-label">שם</span>
+        <input type="text" id="holidayNewName" placeholder="לדוגמה: יום סגירה לחברה" style="flex:1;" />
+      </div>
+      <button id="holidayAddBtn">+ הוסף</button>
+    </div>
+
+    <div class="table-card" style="max-width:640px;">
+      <div class="table-scroll">
+        <table id="holidaysTable">
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>שם</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="holidaysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /scheduleView -->
 
   <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
@@ -3156,6 +3214,7 @@ document.getElementById('navUsers').addEventListener('click', () => switchTab('u
 document.getElementById('navMessages').addEventListener('click', () => switchTab('messages'));
 document.getElementById('navReflection').addEventListener('click', () => switchTab('reflection'));
 document.getElementById('navExceptions').addEventListener('click', () => switchTab('exceptions'));
+document.getElementById('navSchedule').addEventListener('click', () => switchTab('schedule'));
 
 function switchTab(tab) {
   const views = {
@@ -3167,6 +3226,7 @@ function switchTab(tab) {
     messages: document.getElementById('messagesView'),
     reflection: document.getElementById('reflectionView'),
     exceptions: document.getElementById('exceptionsView'),
+    schedule: document.getElementById('scheduleView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -3177,6 +3237,7 @@ function switchTab(tab) {
     messages: document.getElementById('navMessages'),
     reflection: document.getElementById('navReflection'),
     exceptions: document.getElementById('navExceptions'),
+    schedule: document.getElementById('navSchedule'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -3189,6 +3250,7 @@ function switchTab(tab) {
   if (tab === 'messages') initMessagesTabIfNeeded();
   if (tab === 'reflection') initReflectionTabIfNeeded();
   if (tab === 'exceptions') loadExceptionAlerts();
+  if (tab === 'schedule') loadScheduleSettings();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -4925,6 +4987,85 @@ async function loadExceptionAlerts() {
   }
 }
 document.getElementById('exceptionsRefreshBtn').addEventListener('click', loadExceptionAlerts);
+
+/* ================= הגדרות תזמון (ימי שליחה, שעה, ימי חג) ================= */
+const DAY_LABELS_HE = { 0: 'ראשון', 1: 'שני', 2: 'שלישי', 3: 'רביעי', 4: 'חמישי', 5: 'שישי', 6: 'שבת' };
+let scheduleSettingsLoaded = false;
+
+async function loadScheduleSettings() {
+  const status = document.getElementById('scheduleSaveStatus');
+  status.textContent = '';
+  try {
+    const { data: settingsRows, error: settingsErr } = await sb.from('pipeline_schedule_settings').select('*').eq('id', 1).limit(1);
+    if (settingsErr) throw settingsErr;
+    const settings = (settingsRows && settingsRows[0]) || { weekly_days: [4], send_time: '07:00', month_end_enabled: true };
+
+    document.querySelectorAll('.schedule-day-cb').forEach(cb => {
+      cb.checked = (settings.weekly_days || []).includes(Number(cb.value));
+    });
+    document.getElementById('scheduleSendTime').value = (settings.send_time || '07:00').slice(0, 5);
+    document.getElementById('scheduleMonthEnd').checked = settings.month_end_enabled !== false;
+
+    await renderHolidaysTable();
+  } catch (err) {
+    console.error(err);
+    status.textContent = 'שגיאה בטעינת ההגדרות. ודא שהרצת את schedule-settings-setup.sql ב-Supabase.';
+  }
+}
+
+async function renderHolidaysTable() {
+  const tbody = document.getElementById('holidaysTbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await sb.from('pipeline_holidays').select('*').gte('date', today).order('date');
+  if (error) { tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת ימי החג.</td></tr>'; return; }
+  if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:14px; text-align:center;">אין ימי חג עתידיים ברשימה.</td></tr>'; return; }
+  tbody.innerHTML = '';
+  data.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${h.date.split('-').reverse().join('/')}</td>
+      <td>${h.name}</td>
+      <td><button class="holiday-delete-btn" data-date="${h.date}" style="border-color:#C0392B; color:#C0392B;">🗑️</button></td>
+    `;
+    tbody.appendChild(tr);
+    tr.querySelector('.holiday-delete-btn').addEventListener('click', async () => {
+      if (!confirm(`למחוק את "${h.name}" (${h.date.split('-').reverse().join('/')}) מרשימת ימי החג?`)) return;
+      const { error: delErr } = await sb.from('pipeline_holidays').delete().eq('date', h.date);
+      if (delErr) { alert('שגיאה במחיקה.'); return; }
+      tr.remove();
+    });
+  });
+}
+
+document.getElementById('scheduleSaveBtn').addEventListener('click', async () => {
+  const status = document.getElementById('scheduleSaveStatus');
+  const weeklyDays = Array.from(document.querySelectorAll('.schedule-day-cb:checked')).map(cb => Number(cb.value));
+  const sendTime = document.getElementById('scheduleSendTime').value || '07:00';
+  const monthEndEnabled = document.getElementById('scheduleMonthEnd').checked;
+  if (!weeklyDays.length && !monthEndEnabled) {
+    status.textContent = 'צריך לבחור לפחות יום שליחה אחד, או להשאיר את "יום העסקים האחרון בחודש" מסומן.';
+    return;
+  }
+  status.textContent = 'שומר…';
+  const { error } = await sb.from('pipeline_schedule_settings')
+    .update({ weekly_days: weeklyDays, send_time: sendTime, month_end_enabled: monthEndEnabled, updated_at: new Date().toISOString() })
+    .eq('id', 1);
+  status.textContent = error ? 'שגיאה בשמירה.' : '✓ נשמר.';
+});
+
+document.getElementById('holidayAddBtn').addEventListener('click', async () => {
+  const dateInput = document.getElementById('holidayNewDate');
+  const nameInput = document.getElementById('holidayNewName');
+  const date = dateInput.value;
+  const name = nameInput.value.trim();
+  if (!date || !name) { alert('צריך למלא תאריך ושם.'); return; }
+  const { error } = await sb.from('pipeline_holidays').upsert({ date, name, is_custom: true });
+  if (error) { alert('שגיאה בהוספה.'); return; }
+  dateInput.value = '';
+  nameInput.value = '';
+  await renderHolidaysTable();
+});
 
 </script>
 </body>
