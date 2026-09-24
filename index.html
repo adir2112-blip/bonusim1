@@ -316,6 +316,11 @@
   }
   .msg-type-badge.bonus { background: rgba(42,107,176,0.12); color: #2A6BB0; }
   .msg-type-badge.reflection { background: rgba(155,89,182,0.12); color: #8E44AD; }
+  .nav-badge {
+    display: inline-block; min-width: 18px; padding: 1px 6px; border-radius: 999px;
+    background: var(--danger-bg, #FBE1E1); color: var(--danger-text, #C0392B);
+    font-size: 11px; font-weight: 700; margin-right: 4px;
+  }
   .dash-alert {
     display: flex; align-items: center; gap: 8px; font-size: 13px;
     padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;
@@ -587,6 +592,7 @@
     <button class="nav-tab" id="navUsers" type="button">ניהול משתמשים</button>
     <button class="nav-tab" id="navMessages" type="button">היסטוריית הודעות</button>
     <button class="nav-tab" id="navReflection" type="button">שיקוף שכר</button>
+    <button class="nav-tab" id="navExceptions" type="button">התראות חריגות <span id="exceptionsBadge" class="nav-badge" style="display:none;">0</span></button>
   </div>
 
   <div id="calculatorView">
@@ -1308,6 +1314,35 @@
       <span class="muted" id="reflectionSendStatus"></span>
     </div>
   </div><!-- /reflectionView -->
+
+  <div id="exceptionsView" style="display:none;">
+    <div class="global-toolbar">
+      <span class="hint" style="margin:0;">מבוסס על הדיווח האחרון שהועלה ב"שיקוף שכר". נציג מסומן אם יש לו 3 ימי עבודה רצופים (לא שישי/שבת) בלי שעות ובלי חופש/מחלה.</span>
+      <button id="exceptionsRefreshBtn" style="margin-right:auto;">🔄 רענן</button>
+    </div>
+
+    <div id="exceptionsBanner"></div>
+
+    <div class="table-card">
+      <div class="table-scroll">
+        <table id="exceptionsTable">
+          <thead>
+            <tr>
+              <th>שם מלא</th>
+              <th>ת"ז</th>
+              <th>מחלקה</th>
+              <th>טלפון</th>
+              <th>ימים רצופים ללא נוכחות</th>
+              <th>מתאריך</th>
+              <th>עד תאריך</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="exceptionsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /exceptionsView -->
 
   <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
@@ -3060,6 +3095,7 @@ async function initApp() {
   await loadMonthCustomLabels();
   await populateMonthSelect();
   await loadMonth(activeMonth);
+  refreshExceptionsBadge();
 }
 
 /* ================= AUTH GATE ================= */
@@ -3119,6 +3155,7 @@ document.getElementById('navDashboard').addEventListener('click', () => switchTa
 document.getElementById('navUsers').addEventListener('click', () => switchTab('users'));
 document.getElementById('navMessages').addEventListener('click', () => switchTab('messages'));
 document.getElementById('navReflection').addEventListener('click', () => switchTab('reflection'));
+document.getElementById('navExceptions').addEventListener('click', () => switchTab('exceptions'));
 
 function switchTab(tab) {
   const views = {
@@ -3129,6 +3166,7 @@ function switchTab(tab) {
     users: document.getElementById('usersView'),
     messages: document.getElementById('messagesView'),
     reflection: document.getElementById('reflectionView'),
+    exceptions: document.getElementById('exceptionsView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -3138,6 +3176,7 @@ function switchTab(tab) {
     users: document.getElementById('navUsers'),
     messages: document.getElementById('navMessages'),
     reflection: document.getElementById('navReflection'),
+    exceptions: document.getElementById('navExceptions'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -3149,6 +3188,7 @@ function switchTab(tab) {
   if (tab === 'users') initUsersTabIfNeeded();
   if (tab === 'messages') initMessagesTabIfNeeded();
   if (tab === 'reflection') initReflectionTabIfNeeded();
+  if (tab === 'exceptions') loadExceptionAlerts();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -4129,9 +4169,13 @@ let reflectionSelectedIds = new Set();
 let reflectionPhoneByEmpId = {};
 let reflectionTabLoaded = false;
 
-function excelSerialToISO(serial) {
+function excelSerialToISO(serial, date1904) {
   // תיקון: הדוח מייצא כל תאריך יום אחד מוקדם מדי - מזיזים יום אחד קדימה.
-  const utcDays = Math.floor(serial - 25569) + 1;
+  // חלק מהדוחות (תלוי בהגדרות הייצוא בסינריון) מיוצאים במערכת תאריכים 1904
+  // (Mac/Lotus) שמוזחת 1461 יום אחורה לעומת מערכת 1900 הרגילה - בלי התיקון הזה
+  // הדוח נטען עם תאריכים שגויים בכ-4 שנים, למרות שהם נראים תקינים בקובץ באקסל.
+  const epochBase = date1904 ? (25569 - 1461) : 25569;
+  const utcDays = Math.floor(serial - epochBase) + 1;
   return new Date(utcDays * 86400 * 1000).toISOString().slice(0, 10);
 }
 function timeFracToHHMM(frac) {
@@ -4174,7 +4218,7 @@ function parseReflectionFile(data) {
   return out;
 }
 
-function buildReflectionEmployees(parsedRows) {
+function buildReflectionEmployees(parsedRows, date1904) {
   const byEmp = {};
   parsedRows.forEach(r => {
     if (!byEmp[r.empId]) byEmp[r.empId] = { empId: r.empId, firstName: r.firstName, lastName: r.lastName, dept: r.dept, days: [] };
@@ -4183,7 +4227,7 @@ function buildReflectionEmployees(parsedRows) {
     if (r.lastName) emp.lastName = r.lastName;
     const kind = classifyReflectionDay(r.S, r.T);
     emp.days.push({
-      date: excelSerialToISO(r.dateSerial),
+      date: excelSerialToISO(r.dateSerial, date1904),
       in: timeFracToHHMM(r.checkIn), out: timeFracToHHMM(r.checkOut),
       in2: timeFracToHHMM(r.checkIn2), out2: timeFracToHHMM(r.checkOut2),
       S: r.S, T: r.T, kind,
@@ -4529,6 +4573,7 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
   try {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
+    const date1904 = !!(wb.Workbook && wb.Workbook.WBProps && wb.Workbook.WBProps.date1904);
     const sheet = fixSheetRange(wb.Sheets[wb.SheetNames[0]]);
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     const parsed = parseReflectionFile(data);
@@ -4536,7 +4581,7 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
       banner.innerHTML = '<div class="banner error">לא נמצאו שורות נתונים בקובץ. ודא שזהו קובץ דוח נוכחות יומי תקין.</div>';
       return;
     }
-    reflectionEmployees = buildReflectionEmployees(parsed);
+    reflectionEmployees = buildReflectionEmployees(parsed, date1904);
     reflectionSelectedIds = new Set();
     await loadReflectionPhones();
     banner.innerHTML = '<div class="banner ok">שומר את הדיווח…</div>';
@@ -4734,6 +4779,152 @@ async function initReflectionTabIfNeeded() {
   }
   await loadMessageTemplates();
 }
+
+/* ================= התראות חריגות (היעדרות 3 ימים רצופים) ================= */
+function isWeekendDate(dateStr) {
+  const day = new Date(dateStr + 'T00:00:00').getDay(); // 0=ראשון..6=שבת
+  return day === 5 || day === 6; // שישי, שבת
+}
+
+// עבור נציג בודד: מוצא את הרצף הארוך ביותר של ימי עבודה (לא שישי/שבת) ברציפות
+// בלי שעות ובלי חופש/מחלה (kind === 'off'). מניח רשומה אחת ליום קלנדרי מהדוח
+// (כפי שכבר משמש את "שיקוף שכר" הרגיל), אז אחרי סינון סופ"ש ההמשכיות ברשימה = המשכיות עסקית.
+function longestAbsenceStreak(days) {
+  const sorted = (days || [])
+    .filter(d => d.work_date && !isWeekendDate(d.work_date))
+    .sort((a, b) => a.work_date.localeCompare(b.work_date));
+  let curLen = 0, curStart = null, best = null;
+  for (const d of sorted) {
+    if (d.kind === 'off') {
+      if (curLen === 0) curStart = d.work_date;
+      curLen++;
+      if (!best || curLen > best.len) best = { len: curLen, start: curStart, end: d.work_date };
+    } else {
+      curLen = 0;
+      curStart = null;
+    }
+  }
+  return best;
+}
+
+async function computeExceptionAlerts() {
+  const { data: batches, error: batchErr } = await sb.from('reflection_batches')
+    .select('id, label, created_at').order('created_at', { ascending: false }).limit(1);
+  if (batchErr) throw batchErr;
+  if (!batches || !batches.length) return { batchLabel: null, alerts: [] };
+  const batchId = batches[0].id;
+
+  const { data: empRows, error: empErr } = await sb.from('reflection_employees')
+    .select('id, emp_id, full_name, department, phone').eq('batch_id', batchId);
+  if (empErr) throw empErr;
+  const empIds = (empRows || []).map(e => e.id);
+  if (!empIds.length) return { batchLabel: batches[0].label, alerts: [] };
+
+  const { data: dayRows, error: dayErr } = await sb.from('reflection_days')
+    .select('employee_id, work_date, kind').in('employee_id', empIds);
+  if (dayErr) throw dayErr;
+
+  const daysByEmp = {};
+  (dayRows || []).forEach(d => { (daysByEmp[d.employee_id] = daysByEmp[d.employee_id] || []).push(d); });
+
+  let rawAlerts = [];
+  empRows.forEach(e => {
+    const streak = longestAbsenceStreak(daysByEmp[e.id]);
+    if (streak && streak.len >= 3) {
+      rawAlerts.push({
+        fullName: e.full_name, empId: e.emp_id, department: e.department, phone: e.phone,
+        len: streak.len, start: streak.start, end: streak.end,
+      });
+    }
+  });
+
+  // סנן התראות שכבר סומנו כ"טופל" (לפי emp_id + תאריך הסיום של הרצף הספציפי -
+  // אם אחר כך יווצר רצף חדש/מאוחר יותר לאותו נציג, הוא יופיע שוב כהתראה טרייה).
+  if (rawAlerts.length) {
+    const empIdsWithAlerts = [...new Set(rawAlerts.map(a => a.empId))];
+    const { data: dismissed, error: dismissErr } = await sb.from('exception_dismissals')
+      .select('emp_id, streak_end').in('emp_id', empIdsWithAlerts);
+    if (dismissErr) console.error('exception_dismissals read failed:', dismissErr);
+    const dismissedKeys = new Set((dismissed || []).map(d => `${d.emp_id}|${d.streak_end}`));
+    rawAlerts = rawAlerts.filter(a => !dismissedKeys.has(`${a.empId}|${a.end}`));
+  }
+
+  rawAlerts.sort((a, b) => b.len - a.len);
+  return { batchLabel: batches[0].label, alerts: rawAlerts };
+}
+
+async function refreshExceptionsBadge() {
+  try {
+    const { alerts } = await computeExceptionAlerts();
+    const badge = document.getElementById('exceptionsBadge');
+    if (alerts.length > 0) {
+      badge.textContent = String(alerts.length);
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('refreshExceptionsBadge failed:', err);
+  }
+}
+
+async function loadExceptionAlerts() {
+  const banner = document.getElementById('exceptionsBanner');
+  const tbody = document.getElementById('exceptionsTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">טוען…</td></tr>';
+  banner.innerHTML = '';
+  try {
+    const { batchLabel, alerts } = await computeExceptionAlerts();
+    if (!batchLabel) {
+      tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
+      return;
+    }
+    banner.innerHTML = `<p class="hint" style="margin:0 0 12px;">מבוסס על דיווח: <b>${batchLabel}</b></p>`;
+    if (!alerts.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">אין כרגע נציגים עם 3 ימי היעדרות רצופים ומעלה 🎉</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '';
+    alerts.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${a.fullName || '—'}</td>
+        <td>${a.empId || '—'}</td>
+        <td>${DEPT_LABELS[a.department] || a.department || '—'}</td>
+        <td dir="ltr" style="text-align:right;">${a.phone || '—'}</td>
+        <td><span class="zero-metric">${a.len}</span></td>
+        <td>${a.start}</td>
+        <td>${a.end}</td>
+        <td><button class="dismiss-exception-btn" data-emp="${a.empId}" data-end="${a.end}">✔️ טופל</button></td>
+      `;
+      tbody.appendChild(tr);
+      tr.querySelector('.dismiss-exception-btn').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'שומר…';
+        try {
+          const { error } = await sb.from('exception_dismissals').insert({ emp_id: a.empId, streak_end: a.end });
+          if (error) throw error;
+          tr.remove();
+          await refreshExceptionsBadge();
+          if (!document.getElementById('exceptionsTbody').children.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">אין כרגע נציגים עם 3 ימי היעדרות רצופים ומעלה 🎉</td></tr>';
+          }
+        } catch (err) {
+          console.error(err);
+          btn.disabled = false;
+          btn.textContent = '✔️ טופל';
+          alert('שגיאה בסימון כטופל.');
+        }
+      });
+    });
+    await refreshExceptionsBadge();
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px; text-align:center;">שגיאה בטעינת ההתראות.</td></tr>';
+  }
+}
+document.getElementById('exceptionsRefreshBtn').addEventListener('click', loadExceptionAlerts);
 
 </script>
 </body>
