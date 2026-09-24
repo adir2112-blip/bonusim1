@@ -594,6 +594,7 @@
     <button class="nav-tab" id="navReflection" type="button">שיקוף שכר</button>
     <button class="nav-tab" id="navExceptions" type="button">התראות חריגות <span id="exceptionsBadge" class="nav-badge" style="display:none;">0</span></button>
     <button class="nav-tab" id="navSchedule" type="button">הגדרות תזמון</button>
+    <button class="nav-tab" id="navTekina" type="button">תקינה</button>
   </div>
 
   <div id="calculatorView">
@@ -1401,6 +1402,13 @@
       </div>
     </div>
   </div><!-- /scheduleView -->
+
+  <div id="tekinaView" style="display:none;">
+    <h2 style="margin-top:0;">תקינה מצטברת למחלקה</h2>
+    <p class="hint">מבוסס על הדיווח האחרון שהועלה ב"שיקוף שכר" (אותו דיווח שהאוטומציה מושכת מסינריון). נשלח אוטומטית בוואטסאפ כל יום חמישי.</p>
+    <div id="tekinaBanner"></div>
+    <div id="tekinaCards"></div>
+  </div><!-- /tekinaView -->
 
   <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
@@ -3215,6 +3223,7 @@ document.getElementById('navMessages').addEventListener('click', () => switchTab
 document.getElementById('navReflection').addEventListener('click', () => switchTab('reflection'));
 document.getElementById('navExceptions').addEventListener('click', () => switchTab('exceptions'));
 document.getElementById('navSchedule').addEventListener('click', () => switchTab('schedule'));
+document.getElementById('navTekina').addEventListener('click', () => switchTab('tekina'));
 
 function switchTab(tab) {
   const views = {
@@ -3227,6 +3236,7 @@ function switchTab(tab) {
     reflection: document.getElementById('reflectionView'),
     exceptions: document.getElementById('exceptionsView'),
     schedule: document.getElementById('scheduleView'),
+    tekina: document.getElementById('tekinaView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -3238,6 +3248,7 @@ function switchTab(tab) {
     reflection: document.getElementById('navReflection'),
     exceptions: document.getElementById('navExceptions'),
     schedule: document.getElementById('navSchedule'),
+    tekina: document.getElementById('navTekina'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -3251,6 +3262,7 @@ function switchTab(tab) {
   if (tab === 'reflection') initReflectionTabIfNeeded();
   if (tab === 'exceptions') loadExceptionAlerts();
   if (tab === 'schedule') loadScheduleSettings();
+  if (tab === 'tekina') loadTekinaCards();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -5066,6 +5078,201 @@ document.getElementById('holidayAddBtn').addEventListener('click', async () => {
   nameInput.value = '';
   await renderHolidaysTable();
 });
+
+/* ================= תקינה מצטברת למחלקה ================= */
+function businessDaysBetween(startStr, endStr, excludeDates) {
+  let count = 0;
+  const d = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  while (d <= end) {
+    const day = d.getDay();
+    const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if (day !== 5 && day !== 6 && !excludeDates.has(iso)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+async function computeTekinaForDept(setting) {
+  const { data: batches, error: batchErr } = await sb.from('reflection_batches')
+    .select('id, label, created_at').order('created_at', { ascending: false }).limit(1);
+  if (batchErr) throw batchErr;
+  if (!batches || !batches.length) return null;
+  const batchId = batches[0].id;
+
+  const { data: allEmps, error: allEmpErr } = await sb.from('reflection_employees').select('id, department').eq('batch_id', batchId);
+  if (allEmpErr) throw allEmpErr;
+  const allEmpIds = (allEmps || []).map(e => e.id);
+  if (!allEmpIds.length) return { batchLabel: batches[0].label, empty: true };
+
+  const { data: deptEmps, error: deptEmpErr } = await sb.from('reflection_employees')
+    .select('id, full_name').eq('batch_id', batchId).eq('department', setting.dept_filter);
+  if (deptEmpErr) throw deptEmpErr;
+
+  const excludeNames = new Set((setting.exclude_names || []).map(n => n.trim()));
+  const includedEmps = (deptEmps || []).filter(e => !excludeNames.has((e.full_name || '').trim()));
+  const includedIds = includedEmps.map(e => e.id);
+
+  const { data: rangeRows, error: rangeErr } = await sb.from('reflection_days').select('work_date').in('employee_id', allEmpIds);
+  if (rangeErr) throw rangeErr;
+  const dates = (rangeRows || []).map(r => r.work_date).sort();
+  const rangeStart = dates[0], rangeEnd = dates[dates.length - 1];
+
+  let totalHours = 0;
+  if (includedIds.length) {
+    const { data: dayRows, error: dayErr } = await sb.from('reflection_days').select('hours').in('employee_id', includedIds);
+    if (dayErr) throw dayErr;
+    totalHours = (dayRows || []).reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
+  }
+
+  let holidayDates = new Set();
+  if (!setting.include_holidays_in_workdays && rangeStart && rangeEnd) {
+    const { data: hRows } = await sb.from('pipeline_holidays').select('date').gte('date', rangeStart).lte('date', rangeEnd);
+    holidayDates = new Set((hRows || []).map(h => h.date));
+  }
+  const workDays = (rangeStart && rangeEnd) ? businessDaysBetween(rangeStart, rangeEnd, holidayDates) : 0;
+
+  const actual = workDays > 0 ? (totalHours / workDays / (setting.divisor_hours || 9)) : 0;
+  const percent = setting.target_employees > 0 ? (actual / setting.target_employees) * 100 : 0;
+
+  return {
+    batchLabel: batches[0].label, rangeStart, rangeEnd, workDays, totalHours,
+    employeeCount: includedIds.length, excludedCount: (deptEmps || []).length - includedIds.length,
+    actual, percent,
+  };
+}
+
+function fmtTekina(n) { return (Math.round(n * 100) / 100).toLocaleString('he-IL'); }
+
+async function loadTekinaCards() {
+  const container = document.getElementById('tekinaCards');
+  const banner = document.getElementById('tekinaBanner');
+  container.innerHTML = '<p class="muted">טוען…</p>';
+  banner.innerHTML = '';
+  try {
+    const { data: settings, error } = await sb.from('tekina_settings').select('*').order('department');
+    if (error) throw error;
+    if (!settings || !settings.length) {
+      container.innerHTML = '<p class="muted">אין עדיין מחלקות מוגדרות. הרץ את tekina-setup.sql ב-Supabase.</p>';
+      return;
+    }
+    container.innerHTML = '';
+    for (const setting of settings) {
+      const computed = await computeTekinaForDept(setting);
+      container.appendChild(renderTekinaCard(setting, computed));
+    }
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = '<p class="muted">שגיאה בטעינה. ודא שהרצת את tekina-setup.sql ב-Supabase.</p>';
+  }
+}
+
+function renderTekinaCard(setting, computed) {
+  const card = document.createElement('div');
+  card.className = 'table-card';
+  card.style.cssText = 'padding:20px; max-width:680px; margin-bottom:24px;';
+
+  let summaryHtml;
+  if (!computed || computed.empty) {
+    summaryHtml = '<p class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</p>';
+  } else {
+    const pctColor = computed.percent >= 100 ? 'var(--success-text, #2E7D32)' : '#C0392B';
+    summaryHtml = `
+      <div class="totals" style="margin:0 0 16px;">
+        <div class="stat">
+          <p class="label">תקן (${setting.target_employees} עובדים × ${setting.target_hours_per_employee} שעות)</p>
+          <p class="value">${fmtTekina(setting.target_employees)}</p>
+        </div>
+        <div class="stat">
+          <p class="label">בפועל (עובדים ממוצע)</p>
+          <p class="value" style="color:${pctColor};">${fmtTekina(computed.actual)}</p>
+        </div>
+        <div class="stat">
+          <p class="label">אחוז מהתקן</p>
+          <p class="value" style="color:${pctColor};">${fmtTekina(computed.percent)}%</p>
+        </div>
+      </div>
+      <p class="hint" style="margin:0 0 16px;">
+        דיווח: <b>${computed.batchLabel}</b> · טווח: ${computed.rangeStart ? computed.rangeStart.split('-').reverse().join('/') : '—'}–${computed.rangeEnd ? computed.rangeEnd.split('-').reverse().join('/') : '—'} ·
+        ${computed.workDays} ימי עבודה · סה"כ ${fmtTekina(computed.totalHours)} שעות · ${computed.employeeCount} נציגים נספרו
+        ${computed.excludedCount ? ` (${computed.excludedCount} הוחרגו)` : ''}
+      </p>
+    `;
+  }
+
+  const uid = 'tekina_' + setting.department;
+  card.innerHTML = `
+    <h3 style="margin:0 0 14px;">${setting.dept_label}</h3>
+    ${summaryHtml}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+      <div>
+        <label class="hint" style="display:block; margin-bottom:4px;">טלפון 1 (שלי)</label>
+        <input type="text" id="${uid}_phone1" dir="ltr" style="width:100%;" value="${setting.phone1 || ''}" placeholder="05XXXXXXXX" />
+      </div>
+      <div>
+        <label class="hint" style="display:block; margin-bottom:4px;">טלפון 2 (אחמ"ש)</label>
+        <input type="text" id="${uid}_phone2" dir="ltr" style="width:100%;" value="${setting.phone2 || ''}" placeholder="05XXXXXXXX" />
+      </div>
+    </div>
+    <label style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
+      <input type="checkbox" id="${uid}_holidays" ${setting.include_holidays_in_workdays ? 'checked' : ''} />
+      לכלול ימי חג כימי עבודה בחישוב (ברירת מחדל: לא נכלל)
+    </label>
+    <label class="hint" style="display:block; margin-bottom:4px;">שמות להחריג מהחישוב (מופרדים בפסיק)</label>
+    <input type="text" id="${uid}_exclude" style="width:100%; margin-bottom:14px;" value="${(setting.exclude_names || []).join(', ')}" />
+    <label class="hint" style="display:block; margin-bottom:4px;">תבנית הודעה (אפשר להשתמש ב-{מחלקה} {ערך} {תקן} {אחוז})</label>
+    <textarea id="${uid}_template" rows="3" style="width:100%; font-family:inherit; padding:8px; margin-bottom:14px;">${setting.message_template || ''}</textarea>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <button class="primary-movement tekina-save-btn" data-uid="${uid}" data-dept="${setting.department}">💾 שמור</button>
+      <button class="tekina-send-btn" data-uid="${uid}" data-dept="${setting.department}">📲 שלח בדיקה עכשיו</button>
+      <span class="muted" id="${uid}_status"></span>
+    </div>
+  `;
+
+  card.querySelector('.tekina-save-btn').addEventListener('click', async () => {
+    const status = card.querySelector(`#${uid}_status`);
+    status.textContent = 'שומר…';
+    const excludeNames = card.querySelector(`#${uid}_exclude`).value.split(',').map(s => s.trim()).filter(Boolean);
+    const { error } = await sb.from('tekina_settings').update({
+      phone1: card.querySelector(`#${uid}_phone1`).value.trim(),
+      phone2: card.querySelector(`#${uid}_phone2`).value.trim(),
+      include_holidays_in_workdays: card.querySelector(`#${uid}_holidays`).checked,
+      exclude_names: excludeNames,
+      message_template: card.querySelector(`#${uid}_template`).value,
+      updated_at: new Date().toISOString(),
+    }).eq('department', setting.department);
+    status.textContent = error ? 'שגיאה בשמירה.' : '✓ נשמר.';
+    if (!error) await loadTekinaCards();
+  });
+
+  card.querySelector('.tekina-send-btn').addEventListener('click', async () => {
+    const status = card.querySelector(`#${uid}_status`);
+    status.textContent = 'שולח…';
+    try {
+      const fresh = await computeTekinaForDept(setting);
+      if (!fresh || fresh.empty) { status.textContent = 'אין נתונים לשליחה.'; return; }
+      const template = card.querySelector(`#${uid}_template`).value;
+      const message = template
+        .replaceAll('{מחלקה}', setting.dept_label)
+        .replaceAll('{ערך}', fmtTekina(fresh.actual))
+        .replaceAll('{תקן}', fmtTekina(setting.target_employees))
+        .replaceAll('{אחוז}', fmtTekina(fresh.percent));
+      const phones = [card.querySelector(`#${uid}_phone1`).value.trim(), card.querySelector(`#${uid}_phone2`).value.trim()].filter(Boolean);
+      if (!phones.length) { status.textContent = 'אין מספרי טלפון מוגדרים.'; return; }
+      let sent = 0;
+      for (const phone of phones) {
+        const result = await sendWhatsAppMessage(phone, message);
+        if (result.ok) sent++;
+      }
+      status.textContent = `נשלח ל-${sent}/${phones.length}.`;
+    } catch (err) {
+      console.error(err);
+      status.textContent = 'שגיאה בשליחה.';
+    }
+  });
+
+  return card;
+}
 
 </script>
 </body>
