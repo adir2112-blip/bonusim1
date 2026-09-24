@@ -1407,6 +1407,7 @@
     <h2 style="margin-top:0;">תקינה מצטברת למחלקה</h2>
     <p class="hint">מבוסס על הדיווח האחרון שהועלה ב"שיקוף שכר" (אותו דיווח שהאוטומציה מושכת מסינריון). נשלח אוטומטית בוואטסאפ כל יום חמישי.</p>
     <div id="tekinaBanner"></div>
+    <div id="tekinaCandidatesBox"></div>
     <div id="tekinaCards"></div>
   </div><!-- /tekinaView -->
 
@@ -5144,6 +5145,65 @@ async function computeTekinaForDept(setting) {
 
 function fmtTekina(n) { return (Math.round(n * 100) / 100).toLocaleString('he-IL'); }
 
+// מוצא "ימים חשודים" (למשל ערבי חג) - יום עסקים רגיל שנמצא ממש לפני יום חג
+// ידוע, עדיין לא ברשימת ימי החג, ועדיין לא נסקר. אלה מוצגים תמיד עד שיוחלט.
+async function findCandidateDays(rangeStart, rangeEnd) {
+  if (!rangeStart || !rangeEnd) return [];
+  const { data: holidays } = await sb.from('pipeline_holidays').select('date, name').gte('date', rangeStart).lte('date', rangeEnd);
+  if (!holidays || !holidays.length) return [];
+  const holidaySet = new Set(holidays.map(h => h.date));
+
+  const { data: reviews } = await sb.from('tekina_day_reviews').select('date');
+  const reviewedSet = new Set((reviews || []).map(r => r.date));
+
+  const candidates = [];
+  for (const h of holidays) {
+    const d = new Date(h.date + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    const day = d.getDay();
+    const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if (day === 5 || day === 6) continue; // כבר סופ"ש, לא רלוונטי
+    if (holidaySet.has(iso) || reviewedSet.has(iso)) continue;
+    if (iso < rangeStart || iso > rangeEnd) continue; // אין עליו נתונים בדיווח הנוכחי
+    candidates.push({ date: iso, beforeHoliday: h.name, beforeDate: h.date });
+  }
+  return candidates;
+}
+
+function renderTekinaCandidates(candidates) {
+  const box = document.getElementById('tekinaCandidatesBox');
+  if (!candidates.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="table-card" style="padding:16px 20px; max-width:680px; margin-bottom:24px; border-color:#C0392B;">
+      <p style="font-weight:600; margin:0 0 10px; color:#C0392B;">⚠️ ימים שדורשים החלטה שלך</p>
+      <p class="hint" style="margin:0 0 14px;">הימים האלה צמודים לחג ידוע אבל לא רשומים כחג - צריך לדעת אם עבדו בהם או לא, כדי שחישוב התקינה יהיה מדויק.</p>
+      <div id="tekinaCandidatesList"></div>
+    </div>
+  `;
+  const list = document.getElementById('tekinaCandidatesList');
+  candidates.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border);';
+    row.innerHTML = `
+      <span style="flex:1;">${c.date.split('-').reverse().join('/')} (יום לפני ${c.beforeHoliday})</span>
+      <button class="tekina-candidate-worked" data-date="${c.date}">✅ עבדנו - ספור כרגיל</button>
+      <button class="tekina-candidate-off" data-date="${c.date}" style="border-color:#C0392B; color:#C0392B;">🚫 לא עבדנו - החרג</button>
+    `;
+    list.appendChild(row);
+
+    row.querySelector('.tekina-candidate-worked').addEventListener('click', async () => {
+      await sb.from('tekina_day_reviews').insert({ date: c.date, keep_as_workday: true });
+      row.remove();
+    });
+    row.querySelector('.tekina-candidate-off').addEventListener('click', async () => {
+      await sb.from('tekina_day_reviews').insert({ date: c.date, keep_as_workday: false });
+      await sb.from('pipeline_holidays').upsert({ date: c.date, name: `ערב ${c.beforeHoliday}`, is_custom: true });
+      row.remove();
+      await loadTekinaCards();
+    });
+  });
+}
+
 async function loadTekinaCards() {
   const container = document.getElementById('tekinaCards');
   const banner = document.getElementById('tekinaBanner');
@@ -5157,13 +5217,17 @@ async function loadTekinaCards() {
       return;
     }
     container.innerHTML = '';
+    let rangeStart = null, rangeEnd = null;
     for (const setting of settings) {
       const computed = await computeTekinaForDept(setting);
+      if (computed && computed.rangeStart) { rangeStart = computed.rangeStart; rangeEnd = computed.rangeEnd; }
       container.appendChild(renderTekinaCard(setting, computed));
     }
+    const candidates = await findCandidateDays(rangeStart, rangeEnd);
+    renderTekinaCandidates(candidates);
   } catch (err) {
     console.error(err);
-    container.innerHTML = '<p class="muted">שגיאה בטעינה. ודא שהרצת את tekina-setup.sql ב-Supabase.</p>';
+    container.innerHTML = '<p class="muted">שגיאה בטעינה. ודא שהרצת את tekina-setup.sql ו-tekina-reviews-setup.sql ב-Supabase.</p>';
   }
 }
 
