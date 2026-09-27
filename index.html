@@ -595,6 +595,7 @@
     <button class="nav-tab" id="navExceptions" type="button">התראות חריגות <span id="exceptionsBadge" class="nav-badge" style="display:none;">0</span></button>
     <button class="nav-tab" id="navSchedule" type="button">הגדרות תזמון</button>
     <button class="nav-tab" id="navTekina" type="button">תקינה</button>
+    <button class="nav-tab" id="navTekinaReport" type="button">דוח תקינה אדיר</button>
   </div>
 
   <div id="calculatorView">
@@ -1410,6 +1411,32 @@
     <div id="tekinaCandidatesBox"></div>
     <div id="tekinaCards"></div>
   </div><!-- /tekinaView -->
+
+  <div id="tekinaReportView" style="display:none;">
+    <h2 style="margin-top:0;">דוח תקינה אדיר</h2>
+    <p class="hint">מתעדכן אוטומטית לפי הדיווח האחרון שהועלה ב"שיקוף שכר". <span id="tekinaReportBatchBadge"></span></p>
+    <div class="table-card" style="max-width:760px;">
+      <div class="table-scroll">
+        <table id="tekinaReportTable">
+          <thead>
+            <tr>
+              <th>שם הפעילות</th>
+              <th>שעות נוכח לשכר</th>
+              <th>עובדים שסיננת</th>
+            </tr>
+          </thead>
+          <tbody id="tekinaReportTbody"></tbody>
+          <tfoot>
+            <tr>
+              <td style="font-weight:700;">סה"כ</td>
+              <td id="tekinaReportTotal" style="font-weight:700;"></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tekinaReportView -->
 
   <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
@@ -3225,6 +3252,7 @@ document.getElementById('navReflection').addEventListener('click', () => switchT
 document.getElementById('navExceptions').addEventListener('click', () => switchTab('exceptions'));
 document.getElementById('navSchedule').addEventListener('click', () => switchTab('schedule'));
 document.getElementById('navTekina').addEventListener('click', () => switchTab('tekina'));
+document.getElementById('navTekinaReport').addEventListener('click', () => switchTab('tekinaReport'));
 
 function switchTab(tab) {
   const views = {
@@ -3238,6 +3266,7 @@ function switchTab(tab) {
     exceptions: document.getElementById('exceptionsView'),
     schedule: document.getElementById('scheduleView'),
     tekina: document.getElementById('tekinaView'),
+    tekinaReport: document.getElementById('tekinaReportView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -3250,6 +3279,7 @@ function switchTab(tab) {
     exceptions: document.getElementById('navExceptions'),
     schedule: document.getElementById('navSchedule'),
     tekina: document.getElementById('navTekina'),
+    tekinaReport: document.getElementById('navTekinaReport'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -3264,6 +3294,7 @@ function switchTab(tab) {
   if (tab === 'exceptions') loadExceptionAlerts();
   if (tab === 'schedule') loadScheduleSettings();
   if (tab === 'tekina') loadTekinaCards();
+  if (tab === 'tekinaReport') loadTekinaReportItems();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -5298,6 +5329,14 @@ function renderTekinaCard(setting, computed) {
         <input type="text" id="${uid}_phone2" dir="ltr" style="width:100%;" value="${setting.phone2 || ''}" placeholder="05XXXXXXXX" />
       </div>
     </div>
+    <p style="font-weight:600; margin:0 0 8px;">מתי לשלוח אוטומטית בוואטסאפ</p>
+    <div id="${uid}_daysRow" style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">
+      ${[0, 1, 2, 3, 4].map(d => `
+        <label><input type="checkbox" class="tekina-day-cb" data-uid="${uid}" value="${d}" ${(setting.send_days || [4]).includes(d) ? 'checked' : ''} /> ${DAY_LABELS_HE[d]}</label>
+      `).join('')}
+    </div>
+    <label class="hint" style="display:block; margin-bottom:4px;">שעה</label>
+    <input type="time" id="${uid}_sendTime" style="width:140px; margin-bottom:14px;" value="${(setting.send_time || '07:00').slice(0, 5)}" />
     <label style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
       <input type="checkbox" id="${uid}_holidays" ${setting.include_holidays_in_workdays ? 'checked' : ''} />
       לכלול ימי חג כימי עבודה בחישוב (ברירת מחדל: לא נכלל)
@@ -5317,11 +5356,14 @@ function renderTekinaCard(setting, computed) {
     const status = card.querySelector(`#${uid}_status`);
     status.textContent = 'שומר…';
     const excludeNames = card.querySelector(`#${uid}_exclude`).value.split(',').map(s => s.trim()).filter(Boolean);
+    const sendDays = Array.from(card.querySelectorAll(`.tekina-day-cb[data-uid="${uid}"]:checked`)).map(cb => Number(cb.value));
     const { error } = await sb.from('tekina_settings').update({
       target_employees: Number(card.querySelector(`#${uid}_targetEmp`).value) || setting.target_employees,
       target_hours_per_employee: Number(card.querySelector(`#${uid}_targetHours`).value) || setting.target_hours_per_employee,
       phone1: card.querySelector(`#${uid}_phone1`).value.trim(),
       phone2: card.querySelector(`#${uid}_phone2`).value.trim(),
+      send_days: sendDays,
+      send_time: card.querySelector(`#${uid}_sendTime`).value || setting.send_time,
       include_holidays_in_workdays: card.querySelector(`#${uid}_holidays`).checked,
       exclude_names: excludeNames,
       message_template: card.querySelector(`#${uid}_template`).value,
@@ -5358,6 +5400,70 @@ function renderTekinaCard(setting, computed) {
   });
 
   return card;
+}
+
+/* ================= דוח תקינה אדיר (טבלה מרוכזת לפי פעילות) ================= */
+async function computeTekinaReportItem(item, batchId) {
+  const { data: deptEmps, error } = await sb.from('reflection_employees')
+    .select('id, full_name').eq('batch_id', batchId).eq('department', item.dept_filter);
+  if (error) throw error;
+
+  const excludeNames = new Set((item.exclude_names || []).map(n => n.trim()));
+  const includedEmps = (deptEmps || []).filter(e => !excludeNames.has((e.full_name || '').trim()));
+  const includedIds = includedEmps.map(e => e.id);
+
+  let totalHours = 0;
+  if (includedIds.length) {
+    const dayRows = await fetchAllRows(sb.from('reflection_days').select('hours').in('employee_id', includedIds));
+    totalHours = dayRows.reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
+  }
+
+  return { totalHours, excludedNames: [...excludeNames] };
+}
+
+async function loadTekinaReportItems() {
+  const tbody = document.getElementById('tekinaReportTbody');
+  const totalCell = document.getElementById('tekinaReportTotal');
+  const badge = document.getElementById('tekinaReportBatchBadge');
+  tbody.innerHTML = '<tr><td colspan="3" class="muted">טוען…</td></tr>';
+  totalCell.textContent = '';
+  badge.textContent = '';
+  try {
+    const { data: items, error: itemsErr } = await sb.from('tekina_report_items').select('*').order('sort_order');
+    if (itemsErr) throw itemsErr;
+    if (!items || !items.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
+      return;
+    }
+
+    const { data: batches, error: batchErr } = await sb.from('reflection_batches')
+      .select('id, label, created_at').order('created_at', { ascending: false }).limit(1);
+    if (batchErr) throw batchErr;
+    if (!batches || !batches.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
+      return;
+    }
+    const batchId = batches[0].id;
+    badge.textContent = `מבוסס על: ${batches[0].label}`;
+
+    tbody.innerHTML = '';
+    let grandTotal = 0;
+    for (const item of items) {
+      const computed = await computeTekinaReportItem(item, batchId);
+      grandTotal += computed.totalHours;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-weight:600;">${item.dept_label}</td>
+        <td>${fmtTekina(computed.totalHours)}</td>
+        <td>${computed.excludedNames.length ? computed.excludedNames.join(', ') : '<span class="muted">— (כולם נכללים)</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+    totalCell.textContent = fmtTekina(grandTotal);
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="3" class="muted">שגיאה בטעינה.</td></tr>';
+  }
 }
 
 </script>
