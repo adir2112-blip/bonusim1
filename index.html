@@ -4529,6 +4529,24 @@ async function persistReflectionBatchData(batchId) {
 }
 
 // טוען דיווח קיים מה-DB לתוך המסך (בלי קריאה מחדש של קובץ).
+// Supabase/PostgREST מחזיר כברירת מחדל לכל היותר 1000 שורות לשאילתה, גם בלי
+// שגיאה - שאילתה גדולה יותר פשוט נחתכת בשקט. דיווח שיקוף שכר רגיל (~59 נציגים
+// × ~20 ימים) עובר את זה בקלות (1107+ שורות), וללא עימוד זה גורם לנציגים
+// אקראיים (תלוי סדר החזרה הפנימי של הדאטהבייס) להיראות עם 0 שעות בכל טעינה.
+async function fetchAllRows(query) {
+  const pageSize = 1000;
+  let from = 0;
+  let all = [];
+  while (true) {
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 async function loadReflectionBatchFromDb(batchId) {
   const { data: empRows, error: empErr } = await sb.from('reflection_employees')
     .select('id, emp_id, full_name, department, phone, token, sent_at, opened_at, approved_at, disputed_at, dispute_note')
@@ -4537,9 +4555,7 @@ async function loadReflectionBatchFromDb(batchId) {
   const empIds = (empRows || []).map(e => e.id);
   let dayRows = [];
   if (empIds.length) {
-    const { data, error } = await sb.from('reflection_days').select('*').in('employee_id', empIds);
-    if (error) throw error;
-    dayRows = data || [];
+    dayRows = await fetchAllRows(sb.from('reflection_days').select('*').in('employee_id', empIds));
   }
   const daysByEmp = {};
   dayRows.forEach(d => { (daysByEmp[d.employee_id] = daysByEmp[d.employee_id] || []).push(d); });
@@ -4895,9 +4911,7 @@ async function computeExceptionAlerts() {
   const empIds = (empRows || []).map(e => e.id);
   if (!empIds.length) return { batchLabel: batches[0].label, alerts: [] };
 
-  const { data: dayRows, error: dayErr } = await sb.from('reflection_days')
-    .select('employee_id, work_date, kind').in('employee_id', empIds);
-  if (dayErr) throw dayErr;
+  const dayRows = await fetchAllRows(sb.from('reflection_days').select('employee_id, work_date, kind').in('employee_id', empIds));
 
   const daysByEmp = {};
   (dayRows || []).forEach(d => { (daysByEmp[d.employee_id] = daysByEmp[d.employee_id] || []).push(d); });
@@ -5114,16 +5128,14 @@ async function computeTekinaForDept(setting) {
   const includedEmps = (deptEmps || []).filter(e => !excludeNames.has((e.full_name || '').trim()));
   const includedIds = includedEmps.map(e => e.id);
 
-  const { data: rangeRows, error: rangeErr } = await sb.from('reflection_days').select('work_date').in('employee_id', allEmpIds);
-  if (rangeErr) throw rangeErr;
-  const dates = (rangeRows || []).map(r => r.work_date).sort();
+  const rangeRows = await fetchAllRows(sb.from('reflection_days').select('work_date').in('employee_id', allEmpIds));
+  const dates = rangeRows.map(r => r.work_date).sort();
   const rangeStart = dates[0], rangeEnd = dates[dates.length - 1];
 
   let totalHours = 0;
   if (includedIds.length) {
-    const { data: dayRows, error: dayErr } = await sb.from('reflection_days').select('hours').in('employee_id', includedIds);
-    if (dayErr) throw dayErr;
-    totalHours = (dayRows || []).reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
+    const dayRows = await fetchAllRows(sb.from('reflection_days').select('hours').in('employee_id', includedIds));
+    totalHours = dayRows.reduce((sum, d) => sum + (Number(d.hours) || 0), 0);
   }
 
   let holidayDates = new Set();
