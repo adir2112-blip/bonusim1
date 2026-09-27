@@ -5282,6 +5282,14 @@ function renderTekinaCard(setting, computed) {
     ${summaryHtml}
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
       <div>
+        <label class="hint" style="display:block; margin-bottom:4px;">תקן - מספר עובדים</label>
+        <input type="number" id="${uid}_targetEmp" step="0.5" style="width:100%;" value="${setting.target_employees}" />
+      </div>
+      <div>
+        <label class="hint" style="display:block; margin-bottom:4px;">תקן - שעות לעובד ליום</label>
+        <input type="number" id="${uid}_targetHours" step="0.5" style="width:100%;" value="${setting.target_hours_per_employee}" />
+      </div>
+      <div>
         <label class="hint" style="display:block; margin-bottom:4px;">טלפון 1 (שלי)</label>
         <input type="text" id="${uid}_phone1" dir="ltr" style="width:100%;" value="${setting.phone1 || ''}" placeholder="05XXXXXXXX" />
       </div>
@@ -5310,6 +5318,8 @@ function renderTekinaCard(setting, computed) {
     status.textContent = 'שומר…';
     const excludeNames = card.querySelector(`#${uid}_exclude`).value.split(',').map(s => s.trim()).filter(Boolean);
     const { error } = await sb.from('tekina_settings').update({
+      target_employees: Number(card.querySelector(`#${uid}_targetEmp`).value) || setting.target_employees,
+      target_hours_per_employee: Number(card.querySelector(`#${uid}_targetHours`).value) || setting.target_hours_per_employee,
       phone1: card.querySelector(`#${uid}_phone1`).value.trim(),
       phone2: card.querySelector(`#${uid}_phone2`).value.trim(),
       include_holidays_in_workdays: card.querySelector(`#${uid}_holidays`).checked,
