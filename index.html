@@ -3660,6 +3660,23 @@ document.getElementById('printPayslipBtn').addEventListener('click', () => {
 /* ================= WHATSAPP BOT INTEGRATION ================= */
 const WHATSAPP_API_URL = 'https://whatsapp-bot-production-120a.up.railway.app/api/send';
 
+// גרסת הדף - חייבת להתאים בדיוק ל-required_version ב-app_meta לפני כל שליחת
+// וואטסאפ. מטרה: טאב ישן ש"נשכח" פתוח (עם תבנית/קוד מיושן) לא יוכל לשלוח בשקט
+// דרך ה-API הפתוח - הוא ייחסם עד שירעננו את הדף ויקבל את הקוד העדכני.
+// כל דיפלוי אמיתי (שינוי בקוד השליחה/תבניות) צריך לעדכן גם את הערך כאן וגם את
+// השורה ב-app_meta.
+const APP_VERSION = '2026-09-28.1';
+
+async function isPageVersionCurrent() {
+  try {
+    const { data, error } = await sb.from('app_meta').select('required_version').eq('id', 1).single();
+    if (error || !data) return true; // הטבלה עוד לא קיימת/נגישה - לא חוסמים
+    return data.required_version === APP_VERSION;
+  } catch (e) {
+    return true;
+  }
+}
+
 function buildWhatsAppMessage(agent, point) {
   const fullName = normalizeName(`${agent.first_name || ''} ${agent.last_name || ''}`) || 'נציג/ה יקר/ה';
   const deptLabel = DEPT_LABELS[agent.department] || agent.department;
@@ -3713,6 +3730,10 @@ function sanitizeForWhatsApp(str) {
 async function sendWhatsAppMessage(phone, message) {
   const normalized = normalizePhoneForWhatsApp(phone);
   if (!normalized) return { ok: false, reason: 'no-phone' };
+  if (!(await isPageVersionCurrent())) {
+    alert('הדף הזה לא מעודכן (טאב ישן). רענן (F5) ונסה שוב - זה נחסם בכוונה כדי למנוע שליחת תבנית מיושנת.');
+    return { ok: false, reason: 'stale-version' };
+  }
   const cleanMessage = sanitizeForWhatsApp(message);
   try {
     const res = await fetch(WHATSAPP_API_URL, {
