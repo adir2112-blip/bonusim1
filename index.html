@@ -3659,13 +3659,13 @@ document.getElementById('printPayslipBtn').addEventListener('click', () => {
 
 /* ================= WHATSAPP BOT INTEGRATION ================= */
 const WHATSAPP_API_URL = 'https://whatsapp-bot-production-120a.up.railway.app/api/send';
-
+const WHATSAPP_API_TOKEN = '0d3c71956e03523f9f588c15a68a4a999ab522f8ce651b6e';
 // גרסת הדף - חייבת להתאים בדיוק ל-required_version ב-app_meta לפני כל שליחת
 // וואטסאפ. מטרה: טאב ישן ש"נשכח" פתוח (עם תבנית/קוד מיושן) לא יוכל לשלוח בשקט
 // דרך ה-API הפתוח - הוא ייחסם עד שירעננו את הדף ויקבל את הקוד העדכני.
 // כל דיפלוי אמיתי (שינוי בקוד השליחה/תבניות) צריך לעדכן גם את הערך כאן וגם את
 // השורה ב-app_meta.
-const APP_VERSION = '2026-09-28.1';
+const APP_VERSION = '2026-09-28.2';
 
 async function isPageVersionCurrent() {
   try {
@@ -3738,7 +3738,7 @@ async function sendWhatsAppMessage(phone, message) {
   try {
     const res = await fetch(WHATSAPP_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${WHATSAPP_API_TOKEN}` },
       body: JSON.stringify({ phone: normalized, message: cleanMessage })
     });
     let bodyText = '';
