@@ -3665,7 +3665,7 @@ const WHATSAPP_API_TOKEN = '0d3c71956e03523f9f588c15a68a4a999ab522f8ce651b6e';
 // דרך ה-API הפתוח - הוא ייחסם עד שירעננו את הדף ויקבל את הקוד העדכני.
 // כל דיפלוי אמיתי (שינוי בקוד השליחה/תבניות) צריך לעדכן גם את הערך כאן וגם את
 // השורה ב-app_meta.
-const APP_VERSION = '2026-09-28.2';
+const APP_VERSION = '2026-09-28.3';
 
 async function isPageVersionCurrent() {
   try {
@@ -5409,11 +5409,13 @@ function renderTekinaCard(setting, computed) {
       const phones = [card.querySelector(`#${uid}_phone1`).value.trim(), card.querySelector(`#${uid}_phone2`).value.trim()].filter(Boolean);
       if (!phones.length) { status.textContent = 'אין מספרי טלפון מוגדרים.'; return; }
       let sent = 0;
+      const failReasons = [];
       for (const phone of phones) {
         const result = await sendWhatsAppMessage(phone, message);
         if (result.ok) sent++;
+        else failReasons.push(`${result.reason || 'unknown'}${result.detail ? ': ' + result.detail : ''}`);
       }
-      status.textContent = `נשלח ל-${sent}/${phones.length}.`;
+      status.textContent = `נשלח ל-${sent}/${phones.length}.` + (failReasons.length ? ` (${failReasons.join(' | ')})` : '');
     } catch (err) {
       console.error(err);
       status.textContent = 'שגיאה בשליחה.';
