@@ -1425,9 +1425,10 @@
           <thead>
             <tr>
               <th>שם הפעילות</th>
-              <th>שעות נוכח לשכר</th>
               <th>עובדים שסיננת</th>
               <th>תקינה יומית (ידני)</th>
+              <th>שעות נוכח לשכר</th>
+              <th>ימי עבודה</th>
               <th>תקן (יומי × ימי עבודה)</th>
               <th>% עמידה ביעד</th>
               <th>תקן יומי ממוצע</th>
@@ -1437,8 +1438,9 @@
           <tfoot>
             <tr>
               <td style="font-weight:700;">סה"כ</td>
-              <td id="tekinaReportTotal" style="font-weight:700;"></td>
               <td></td>
+              <td></td>
+              <td id="tekinaReportTotal" style="font-weight:700;"></td>
               <td></td>
               <td></td>
               <td></td>
@@ -5472,9 +5474,11 @@ async function computeBatchWorkDays(batchId) {
   return businessDaysBetween(rangeStart, rangeEnd, holidayDates);
 }
 
-function recalcTekinaReportRow(tr, totalHours, workDays) {
+function recalcTekinaReportRow(tr, totalHours) {
   const dailyInput = tr.querySelector('.tekina-daily-input');
+  const workdaysInput = tr.querySelector('.tekina-workdays-input');
   const dailyVal = dailyInput.value === '' ? null : Number(dailyInput.value);
+  const workDays = workdaysInput.value === '' ? 0 : Number(workdaysInput.value);
   const targetCell = tr.querySelector('.tekina-target-cell');
   const percentCell = tr.querySelector('.tekina-percent-cell');
   const avgCell = tr.querySelector('.tekina-avg-cell');
@@ -5498,7 +5502,7 @@ async function loadTekinaReportItems() {
   const totalCell = document.getElementById('tekinaReportTotal');
   const badge = document.getElementById('tekinaReportBatchBadge');
   const monthSelect = document.getElementById('tekinaReportMonthSelect');
-  tbody.innerHTML = '<tr><td colspan="7" class="muted">טוען…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="muted">טוען…</td></tr>';
   totalCell.textContent = '';
   badge.textContent = '';
   try {
@@ -5506,7 +5510,7 @@ async function loadTekinaReportItems() {
       .select('id, label, created_at').order('created_at', { ascending: true });
     if (batchErr) throw batchErr;
     if (!batches || !batches.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
       return;
     }
 
@@ -5524,7 +5528,7 @@ async function loadTekinaReportItems() {
     await renderTekinaReportForMonth(monthSelect.value);
   } catch (err) {
     console.error(err);
-    tbody.innerHTML = '<tr><td colspan="7" class="muted">שגיאה בטעינה.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">שגיאה בטעינה.</td></tr>';
   }
 }
 
@@ -5538,7 +5542,7 @@ async function renderTekinaReportForMonth(monthKey) {
   const badge = document.getElementById('tekinaReportBatchBadge');
   const entry = tekinaReportMonths.get(monthKey);
   if (!entry) return;
-  tbody.innerHTML = '<tr><td colspan="7" class="muted">טוען…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="muted">טוען…</td></tr>';
   totalCell.textContent = '';
   badge.textContent = `מבוסס על: ${entry.batchLabel}`;
 
@@ -5546,47 +5550,59 @@ async function renderTekinaReportForMonth(monthKey) {
     const { data: items, error: itemsErr } = await sb.from('tekina_report_items').select('*').order('sort_order');
     if (itemsErr) throw itemsErr;
     if (!items || !items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
       return;
     }
 
-    const [{ data: dailyRows }, workDays] = await Promise.all([
-      sb.from('tekina_report_daily').select('department, value').eq('month', monthKey),
+    const [{ data: dailyRows }, defaultWorkDays] = await Promise.all([
+      sb.from('tekina_report_daily').select('department, value, workdays').eq('month', monthKey),
       computeBatchWorkDays(entry.batchId),
     ]);
-    const dailyByDept = new Map((dailyRows || []).map(r => [r.department, r.value]));
-    badge.textContent = `מבוסס על: ${entry.batchLabel} · ${workDays} ימי עבודה (בניכוי חגים)`;
+    const dailyByDept = new Map((dailyRows || []).map(r => [r.department, r]));
+    badge.textContent = `מבוסס על: ${entry.batchLabel} · ${defaultWorkDays} ימי עבודה מחושבים (בניכוי חגים)`;
 
     tbody.innerHTML = '';
     let grandTotal = 0;
     for (const item of items) {
       const computed = await computeTekinaReportItem(item, entry.batchId);
       grandTotal += computed.totalHours;
-      const dailyVal = dailyByDept.has(item.department) ? dailyByDept.get(item.department) : '';
+      const saved = dailyByDept.get(item.department);
+      const dailyVal = saved && saved.value !== null && saved.value !== undefined ? saved.value : '';
+      const workdaysVal = saved && saved.workdays !== null && saved.workdays !== undefined ? saved.workdays : defaultWorkDays;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="font-weight:600;">${item.dept_label}</td>
-        <td>${fmtTekina(computed.totalHours)}</td>
         <td>${computed.excludedNames.length ? computed.excludedNames.join(', ') : '<span class="muted">— (כולם נכללים)</span>'}</td>
         <td><input type="number" step="0.01" class="tekina-daily-input" data-dept="${item.department}" style="width:100px;" value="${dailyVal}" /></td>
+        <td>${fmtTekina(computed.totalHours)}</td>
+        <td><input type="number" step="1" class="tekina-workdays-input" data-dept="${item.department}" style="width:80px;" value="${workdaysVal}" /></td>
         <td class="tekina-target-cell"></td>
         <td class="tekina-percent-cell"></td>
         <td class="tekina-avg-cell"></td>
       `;
       tbody.appendChild(tr);
-      recalcTekinaReportRow(tr, computed.totalHours, workDays);
+      recalcTekinaReportRow(tr, computed.totalHours);
 
-      const input = tr.querySelector('.tekina-daily-input');
-      input.addEventListener('change', async () => {
-        recalcTekinaReportRow(tr, computed.totalHours, workDays);
-        const value = input.value === '' ? null : Number(input.value);
+      const dailyInput = tr.querySelector('.tekina-daily-input');
+      const workdaysInput = tr.querySelector('.tekina-workdays-input');
+      // שתי שמירות נפרדות בכוונה - שינוי של שדה אחד לא "נועל" את השני כדריסה
+      // ידנית אם המשתמש בכלל לא נגע בו (למשל: שינוי תקינה יומית לא אמור
+      // להקפיא את ימי העבודה המחושבים אוטומטית לחודש הזה).
+      dailyInput.addEventListener('change', async () => {
+        recalcTekinaReportRow(tr, computed.totalHours);
+        const value = dailyInput.value === '' ? null : Number(dailyInput.value);
         await sb.from('tekina_report_daily').upsert({ department: item.department, month: monthKey, value, updated_at: new Date().toISOString() }, { onConflict: 'department,month' });
+      });
+      workdaysInput.addEventListener('change', async () => {
+        recalcTekinaReportRow(tr, computed.totalHours);
+        const workdays = workdaysInput.value === '' ? null : Number(workdaysInput.value);
+        await sb.from('tekina_report_daily').upsert({ department: item.department, month: monthKey, workdays, updated_at: new Date().toISOString() }, { onConflict: 'department,month' });
       });
     }
     totalCell.textContent = fmtTekina(grandTotal);
   } catch (err) {
     console.error(err);
-    tbody.innerHTML = '<tr><td colspan="7" class="muted">שגיאה בטעינה.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">שגיאה בטעינה.</td></tr>';
   }
 }
 
