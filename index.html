@@ -1414,8 +1414,12 @@
 
   <div id="tekinaReportView" style="display:none;">
     <h2 style="margin-top:0;">דוח תקינה אדיר</h2>
-    <p class="hint">מתעדכן אוטומטית לפי הדיווח האחרון שהועלה ב"שיקוף שכר". <span id="tekinaReportBatchBadge"></span></p>
-    <div class="table-card" style="max-width:760px;">
+    <p class="hint">מציג את הדיווח האחרון שהועלה ב"שיקוף שכר" עבור החודש הנבחר. <span id="tekinaReportBatchBadge"></span></p>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+      <label class="hint" for="tekinaReportMonthSelect">חודש</label>
+      <select id="tekinaReportMonthSelect" style="width:auto;"></select>
+    </div>
+    <div class="table-card" style="max-width:900px;">
       <div class="table-scroll">
         <table id="tekinaReportTable">
           <thead>
@@ -1423,6 +1427,7 @@
               <th>שם הפעילות</th>
               <th>שעות נוכח לשכר</th>
               <th>עובדים שסיננת</th>
+              <th>תקינה יומית (ידני)</th>
             </tr>
           </thead>
           <tbody id="tekinaReportTbody"></tbody>
@@ -1430,6 +1435,7 @@
             <tr>
               <td style="font-weight:700;">סה"כ</td>
               <td id="tekinaReportTotal" style="font-weight:700;"></td>
+              <td></td>
               <td></td>
             </tr>
           </tfoot>
@@ -5444,48 +5450,101 @@ async function computeTekinaReportItem(item, batchId) {
   return { totalHours, excludedNames: [...excludeNames] };
 }
 
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+function monthLabel(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return `${HE_MONTHS[m - 1]} ${y}`;
+}
+
+let tekinaReportMonths = new Map(); // monthKey -> { batchId, batchLabel }
+
 async function loadTekinaReportItems() {
   const tbody = document.getElementById('tekinaReportTbody');
   const totalCell = document.getElementById('tekinaReportTotal');
   const badge = document.getElementById('tekinaReportBatchBadge');
-  tbody.innerHTML = '<tr><td colspan="3" class="muted">טוען…</td></tr>';
+  const monthSelect = document.getElementById('tekinaReportMonthSelect');
+  tbody.innerHTML = '<tr><td colspan="4" class="muted">טוען…</td></tr>';
   totalCell.textContent = '';
   badge.textContent = '';
+  try {
+    const { data: batches, error: batchErr } = await sb.from('reflection_batches')
+      .select('id, label, created_at').order('created_at', { ascending: true });
+    if (batchErr) throw batchErr;
+    if (!batches || !batches.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
+      return;
+    }
+
+    tekinaReportMonths = new Map();
+    for (const b of batches) {
+      const monthKey = b.created_at.slice(0, 7);
+      tekinaReportMonths.set(monthKey, { batchId: b.id, batchLabel: b.label }); // later batches overwrite - we want the latest per month
+    }
+    const monthKeys = [...tekinaReportMonths.keys()].sort((a, b) => b.localeCompare(a));
+
+    const prevSelected = monthSelect.value;
+    monthSelect.innerHTML = monthKeys.map(k => `<option value="${k}">${monthLabel(k)}</option>`).join('');
+    monthSelect.value = monthKeys.includes(prevSelected) ? prevSelected : monthKeys[0];
+
+    await renderTekinaReportForMonth(monthSelect.value);
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">שגיאה בטעינה.</td></tr>';
+  }
+}
+
+document.getElementById('tekinaReportMonthSelect').addEventListener('change', (e) => {
+  renderTekinaReportForMonth(e.target.value);
+});
+
+async function renderTekinaReportForMonth(monthKey) {
+  const tbody = document.getElementById('tekinaReportTbody');
+  const totalCell = document.getElementById('tekinaReportTotal');
+  const badge = document.getElementById('tekinaReportBatchBadge');
+  const entry = tekinaReportMonths.get(monthKey);
+  if (!entry) return;
+  tbody.innerHTML = '<tr><td colspan="4" class="muted">טוען…</td></tr>';
+  totalCell.textContent = '';
+  badge.textContent = `מבוסס על: ${entry.batchLabel}`;
+
   try {
     const { data: items, error: itemsErr } = await sb.from('tekina_report_items').select('*').order('sort_order');
     if (itemsErr) throw itemsErr;
     if (!items || !items.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
       return;
     }
 
-    const { data: batches, error: batchErr } = await sb.from('reflection_batches')
-      .select('id, label, created_at').order('created_at', { ascending: false }).limit(1);
-    if (batchErr) throw batchErr;
-    if (!batches || !batches.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
-      return;
-    }
-    const batchId = batches[0].id;
-    badge.textContent = `מבוסס על: ${batches[0].label}`;
+    const { data: dailyRows } = await sb.from('tekina_report_daily').select('department, value').eq('month', monthKey);
+    const dailyByDept = new Map((dailyRows || []).map(r => [r.department, r.value]));
 
     tbody.innerHTML = '';
     let grandTotal = 0;
     for (const item of items) {
-      const computed = await computeTekinaReportItem(item, batchId);
+      const computed = await computeTekinaReportItem(item, entry.batchId);
       grandTotal += computed.totalHours;
+      const dailyVal = dailyByDept.has(item.department) ? dailyByDept.get(item.department) : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="font-weight:600;">${item.dept_label}</td>
         <td>${fmtTekina(computed.totalHours)}</td>
         <td>${computed.excludedNames.length ? computed.excludedNames.join(', ') : '<span class="muted">— (כולם נכללים)</span>'}</td>
+        <td><input type="number" step="0.01" class="tekina-daily-input" data-dept="${item.department}" style="width:100px;" value="${dailyVal}" /></td>
       `;
       tbody.appendChild(tr);
     }
     totalCell.textContent = fmtTekina(grandTotal);
+
+    tbody.querySelectorAll('.tekina-daily-input').forEach(input => {
+      input.addEventListener('change', async () => {
+        const dept = input.getAttribute('data-dept');
+        const value = input.value === '' ? null : Number(input.value);
+        await sb.from('tekina_report_daily').upsert({ department: dept, month: monthKey, value, updated_at: new Date().toISOString() }, { onConflict: 'department,month' });
+      });
+    });
   } catch (err) {
     console.error(err);
-    tbody.innerHTML = '<tr><td colspan="3" class="muted">שגיאה בטעינה.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">שגיאה בטעינה.</td></tr>';
   }
 }
 
