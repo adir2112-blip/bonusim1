@@ -1274,6 +1274,7 @@
               <th>ימי עבודה</th>
               <th>סה"כ שעות</th>
               <th>ימי חופש/מחלה</th>
+              <th title="מוצג רק למנהל - לא נכלל בהודעת הוואטסאפ לעובד">מעבר שעות</th>
               <th>נשלח</th>
               <th>נפתח קישור</th>
               <th>סטטוס אישור</th>
@@ -4452,6 +4453,7 @@ function renderReflectionTable() {
       <td class="num">${e.workedDays}</td>
       <td class="num">${fmt(e.totalHours, 2)}</td>
       <td class="num">${e.leaveDays}</td>
+      <td class="num muted" title="${e.transferToDept ? 'מועבר ל: ' + e.transferToDept : ''}">${e.transferHours ? fmt(e.transferHours, 2) : '—'}</td>
       <td class="num">${e.sentAt ? new Date(e.sentAt).toLocaleDateString('he-IL') : '—'}</td>
       <td>${openedCellHtml(e)}</td>
       <td>${statusCellHtml(e)}</td>
@@ -4628,10 +4630,26 @@ async function loadReflectionBatchFromDb(batchId) {
   const daysByEmp = {};
   dayRows.forEach(d => { (daysByEmp[d.employee_id] = daysByEmp[d.employee_id] || []).push(d); });
 
+  // "מעבר שעות" - מוצג למנהל בלבד, מגיע מהדוח הנוסף שמייבאים אוטומטית
+  // (ראה synerion-fetch/import-tekina-transfers.js). לא קריטי - אם הטבלה
+  // עדיין לא קיימת או שאין נתונים לחודש הזה, פשוט לא מציגים כלום.
+  const transferByEmpId = {};
+  try {
+    const { data: batchRow } = await sb.from('reflection_batches').select('created_at').eq('id', batchId).single();
+    const month = batchRow ? batchRow.created_at.slice(0, 7) : null;
+    if (month) {
+      const { data: transferRows } = await sb.from('employee_hours_transfers').select('emp_id, hours, to_department').eq('month', month);
+      (transferRows || []).forEach(t => { transferByEmpId[t.emp_id] = t; });
+    }
+  } catch (err) {
+    console.error('employee_hours_transfers not available yet:', err);
+  }
+
   reflectionEmployees = (empRows || []).map(e => {
     const days = (daysByEmp[e.id] || [])
       .map(d => ({ date: d.work_date, in: d.check_in, out: d.check_out, in2: d.check_in_2, out2: d.check_out_2, S: d.hours, T: d.leave_total, kind: d.kind }))
       .sort((a, b) => a.date.localeCompare(b.date));
+    const transfer = transferByEmpId[e.emp_id];
     return {
       empId: e.emp_id, fullName: e.full_name, dept: e.department,
       dbId: e.id, token: e.token, sentAt: e.sent_at, openedAt: e.opened_at,
@@ -4640,6 +4658,8 @@ async function loadReflectionBatchFromDb(batchId) {
       workedDays: days.filter(d => d.kind === 'worked').length,
       leaveDays: days.filter(d => d.kind === 'leave').length,
       totalHours: days.reduce((sum, d) => d.kind === 'worked' ? sum + (Number(d.S) || 0) : sum, 0),
+      transferHours: transfer ? transfer.hours : null,
+      transferToDept: transfer ? transfer.to_department : null,
     };
   });
   reflectionPhoneByEmpId = {};
