@@ -596,6 +596,7 @@
     <button class="nav-tab" id="navSchedule" type="button">הגדרות תזמון</button>
     <button class="nav-tab" id="navTekina" type="button">תקינה</button>
     <button class="nav-tab" id="navTekinaReport" type="button">דוח תקינה אדיר</button>
+    <button class="nav-tab" id="navTekinaByMonth" type="button">תקינה לפי חודשים</button>
   </div>
 
   <div id="calculatorView">
@@ -1454,6 +1455,24 @@
       </div>
     </div>
   </div><!-- /tekinaReportView -->
+
+  <div id="tekinaByMonthView" style="display:none;">
+    <h2 style="margin-top:0;">תקינה לפי חודשים</h2>
+    <p class="hint">לכל פעילות - "תקן יומי ממוצע" (שעות ÷ 9 ÷ ימי עבודה) של כל חודש שיש לו דיווח, מהאחרון לראשון. מצטבר - כל חודש חדש שנסגר מצטרף לרשימה אוטומטית.</p>
+    <div class="table-card" style="max-width:100%;">
+      <div class="table-scroll">
+        <table id="tekinaByMonthTable" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="width:220px;">שם הפעילות</th>
+              <th>כמות תקינה</th>
+            </tr>
+          </thead>
+          <tbody id="tekinaByMonthTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tekinaByMonthView -->
 
   <!-- מחוץ בכוונה לכל טאב ספציפי (calculatorView/reflectionView וכו') - אחרת display:none
        של הטאב הלא-פעיל "מסתיר" גם את המודאל הזה איתו, גם אם display שלו עצמו flex. -->
@@ -3270,6 +3289,7 @@ document.getElementById('navExceptions').addEventListener('click', () => switchT
 document.getElementById('navSchedule').addEventListener('click', () => switchTab('schedule'));
 document.getElementById('navTekina').addEventListener('click', () => switchTab('tekina'));
 document.getElementById('navTekinaReport').addEventListener('click', () => switchTab('tekinaReport'));
+document.getElementById('navTekinaByMonth').addEventListener('click', () => switchTab('tekinaByMonth'));
 
 function switchTab(tab) {
   const views = {
@@ -3284,6 +3304,7 @@ function switchTab(tab) {
     schedule: document.getElementById('scheduleView'),
     tekina: document.getElementById('tekinaView'),
     tekinaReport: document.getElementById('tekinaReportView'),
+    tekinaByMonth: document.getElementById('tekinaByMonthView'),
   };
   const navs = {
     calculator: document.getElementById('navCalculator'),
@@ -3297,6 +3318,7 @@ function switchTab(tab) {
     schedule: document.getElementById('navSchedule'),
     tekina: document.getElementById('navTekina'),
     tekinaReport: document.getElementById('navTekinaReport'),
+    tekinaByMonth: document.getElementById('navTekinaByMonth'),
   };
   Object.keys(views).forEach(key => {
     views[key].style.display = key === tab ? '' : 'none';
@@ -3312,6 +3334,7 @@ function switchTab(tab) {
   if (tab === 'schedule') loadScheduleSettings();
   if (tab === 'tekina') loadTekinaCards();
   if (tab === 'tekinaReport') loadTekinaReportItems();
+  if (tab === 'tekinaByMonth') loadTekinaByMonth();
 }
 
 /* ================= AGENT BONUS TAB ================= */
@@ -5719,6 +5742,52 @@ async function resetTekinaReportTransfers(department, monthKey) {
   const { error } = await sb.from('tekina_report_transfers')
     .delete().eq('month', monthKey).or(`from_department.eq.${department},to_department.eq.${department}`);
   if (error) throw error;
+}
+
+/* ================= תקינה לפי חודשים (מצטבר) ================= */
+async function loadTekinaByMonth() {
+  const tbody = document.getElementById('tekinaByMonthTbody');
+  tbody.innerHTML = '<tr><td colspan="2" class="muted">טוען…</td></tr>';
+  try {
+    const { data: items, error: itemsErr } = await sb.from('tekina_report_items').select('*').order('sort_order');
+    if (itemsErr) throw itemsErr;
+    if (!items || !items.length) {
+      tbody.innerHTML = '<tr><td colspan="2" class="muted">אין עדיין פעילויות מוגדרות. הרץ את tekina-report-setup.sql ב-Supabase.</td></tr>';
+      return;
+    }
+
+    const { data: batches, error: batchErr } = await sb.from('reflection_batches').select('id, created_at').order('created_at', { ascending: true });
+    if (batchErr) throw batchErr;
+    if (!batches || !batches.length) {
+      tbody.innerHTML = '<tr><td colspan="2" class="muted">אין עדיין דיווח שיקוף שכר להסתמך עליו.</td></tr>';
+      return;
+    }
+    const batchIdByMonth = new Map(); // monthKey -> latest batch id for that month
+    for (const b of batches) batchIdByMonth.set(b.created_at.slice(0, 7), b.id);
+    const monthKeys = [...batchIdByMonth.keys()].sort((a, b) => b.localeCompare(a)); // החדש ביותר קודם
+
+    tbody.innerHTML = '';
+    for (const item of items) {
+      const parts = [];
+      for (const monthKey of monthKeys) {
+        const batchId = batchIdByMonth.get(monthKey);
+        const [computed, workDays] = await Promise.all([
+          computeTekinaReportItem(item, batchId),
+          computeBatchWorkDays(batchId),
+        ]);
+        if (workDays > 0) parts.push(`${monthLabel(monthKey)}: ${fmtTekina(computed.totalHours / 9 / workDays)}`);
+      }
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-weight:600;">${item.dept_label}</td>
+        <td>${parts.length ? parts.join(' &nbsp;|&nbsp; ') : '<span class="muted">—</span>'}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = '<tr><td colspan="2" class="muted">שגיאה בטעינה.</td></tr>';
+  }
 }
 
 </script>
