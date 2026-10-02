@@ -5683,7 +5683,7 @@ async function renderTekinaReportForMonth(monthKey) {
 // התקבלו X שעות") ובאיפוס נקודתי, ולא רק כסכום נטו.
 async function transferTekinaReportHours(fromDept, toDept, amount, monthKey) {
   const { error } = await sb.from('tekina_report_transfers')
-    .insert({ month: monthKey, from_department: fromDept, to_department: toDept, amount });
+    .insert({ month: monthKey, from_department: fromDept, to_department: toDept, amount, source: 'manual' });
   if (error) throw error;
 }
 
