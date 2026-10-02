@@ -5779,8 +5779,8 @@ async function loadTekinaByMonth() {
       }
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td style="font-weight:600;">${item.dept_label}</td>
-        <td>${parts.length ? parts.join(' &nbsp;|&nbsp; ') : '<span class="muted">—</span>'}</td>
+        <td style="font-weight:600; vertical-align:top;">${item.dept_label}</td>
+        <td>${parts.length ? parts.join('<br>') : '<span class="muted">—</span>'}</td>
       `;
       tbody.appendChild(tr);
     }
