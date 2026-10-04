@@ -2699,7 +2699,12 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
     if (total === 0 && isNaN(inc) && isNaN(out) && isNaN(connFrac)) continue;
     const key = normalizeName(nameVal);
     sums[key] = (sums[key] || 0) + total;
-    hoursSums[key] = (hoursSums[key] || 0) + (isNaN(connFrac) ? 0 : connFrac * 24);
+    // חשוב: רק אם עמודת S באמת הכילה מספר - אחרת לא כותבים 0 "אמיתי" (שגורם
+    // לשיחות-לשעה להיראות 0 גם כשיש שיחות), אלא משאירים את השדה לא-מוגדר כדי
+    // שהחישוב יפול חזרה לשעות העבודה הרגילות (ראה computeMovementRow).
+    if (!isNaN(connFrac)) {
+      hoursSums[key] = (hoursSums[key] || 0) + connFrac * 24;
+    }
   }
   let matchedT = 0, matchedM = 0;
   Object.keys(sums).forEach(key => {
