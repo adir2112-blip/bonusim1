@@ -2126,6 +2126,16 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
         const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
         if (full && full === key) { r[field] = value; any = true; }
       });
+      if (!any) {
+        // נפילה חזרה: בקבצים מסוימים (למשל קבוצת "מפקחים" בדוח השיחות) מופיע
+        // רק שם פרטי, בלי שם משפחה. מתאימים לפי שם פרטי בלבד - אבל רק אם הוא
+        // ייחודי (נציג יחיד עם השם הפרטי הזה), כדי לא לשייך בטעות לאדם הלא נכון.
+        const firstNameMatches = rows.filter(r => r.firstName && nameMatchKey(r.firstName) === key);
+        if (firstNameMatches.length === 1) {
+          firstNameMatches[0][field] = value;
+          any = true;
+        }
+      }
       return any;
     },
     setByEmpId: (empId, field, value) => {
