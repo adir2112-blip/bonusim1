@@ -2135,6 +2135,10 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
       });
       return any;
     },
+    // מאפס שדה לכל השורות - קוראים לזה לפני עיבוד קובץ חדש, כדי שהעלאה חדשה
+    // לאותו חודש תחליף לגמרי את הקודמת (גם למי שלא מופיע בקובץ החדש בכלל),
+    // במקום שישאר אצלו ערך ישן/לא-רלוונטי משארית ההעלאה הקודמת.
+    resetField: (field, blank = '') => { rows.forEach(r => { r[field] = blank; }); },
     refresh: renderCalcOnly
   };
 }
@@ -2593,6 +2597,10 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
     const key = nameMatchKey(nameVal);
     sums[key] = (sums[key] || 0) + val;
   }
+  // העלאה חדשה מחליפה לגמרי את הקודמת לחודש הזה - גם למי שלא נמצא הפעם בקובץ.
+  serviceRows.forEach(r => { r.closedCalls = ''; });
+  tnuat.resetField('digitalCount');
+  meuhedet.resetField('digitalCount');
   let matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
   serviceRows.forEach(r => {
     const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
@@ -2674,6 +2682,9 @@ bindFileButton('uploadMvControlBtn', 'mvControlInput', (data) => {
     const key = String(idVal).trim();
     sums[key] = val;
   }
+  // העלאה חדשה מחליפה לגמרי את הקודמת לחודש הזה - גם למי שלא נמצא הפעם בקובץ.
+  tnuat.resetField('controlScoreRaw');
+  meuhedet.resetField('controlScoreRaw');
   let matchedT = 0, matchedM = 0;
   Object.keys(sums).forEach(key => {
     if (tnuat.setByEmpId(key, 'controlScoreRaw', sums[key])) matchedT++;
@@ -2706,6 +2717,11 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
       hoursSums[key] = (hoursSums[key] || 0) + connFrac * 24;
     }
   }
+  // העלאה חדשה מחליפה לגמרי את הקודמת לחודש הזה - גם למי שלא נמצא הפעם בקובץ.
+  tnuat.resetField('callsCount');
+  meuhedet.resetField('callsCount');
+  tnuat.resetField('callsHours');
+  meuhedet.resetField('callsHours');
   let matchedT = 0, matchedM = 0;
   Object.keys(sums).forEach(key => {
     if (tnuat.setByFullName(key, 'callsCount', sums[key])) matchedT++;
@@ -5619,7 +5635,10 @@ function recalcTekinaReportRow(tr, totalHours) {
 }
 
 const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
-function monthLabel(monthKey) {
+// שם שונה בכוונה מ-monthLabel הכללי (שמוגדר למעלה ותומך בשמות מותאמים אישית
+// מ-month_settings) - פונקציה בשם זהה כאן הייתה דורסת אותו גלובלית ומשביתה
+// את "שנה שם" לחודש בכל האפליקציה בלי שום שגיאה גלויה.
+function tekinaMonthLabel(monthKey) {
   const [y, m] = monthKey.split('-').map(Number);
   return `${HE_MONTHS[m - 1]} ${y}`;
 }
@@ -5651,7 +5670,7 @@ async function loadTekinaReportItems() {
     const monthKeys = [...tekinaReportMonths.keys()].sort((a, b) => b.localeCompare(a));
 
     const prevSelected = monthSelect.value;
-    monthSelect.innerHTML = monthKeys.map(k => `<option value="${k}">${monthLabel(k)}</option>`).join('');
+    monthSelect.innerHTML = monthKeys.map(k => `<option value="${k}">${tekinaMonthLabel(k)}</option>`).join('');
     monthSelect.value = monthKeys.includes(prevSelected) ? prevSelected : monthKeys[0];
 
     await renderTekinaReportForMonth(monthSelect.value);
@@ -5853,7 +5872,7 @@ async function loadTekinaByMonth() {
           computeTekinaReportItem(item, batchId),
           computeBatchWorkDays(batchId),
         ]);
-        if (workDays > 0) parts.push(`${monthLabel(monthKey)}: ${fmtTekina(computed.totalHours / 9 / workDays)}`);
+        if (workDays > 0) parts.push(`${tekinaMonthLabel(monthKey)}: ${fmtTekina(computed.totalHours / 9 / workDays)}`);
       }
       const tr = document.createElement('tr');
       tr.innerHTML = `
