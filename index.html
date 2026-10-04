@@ -1564,7 +1564,10 @@ function normalizeName(s) {
 // spelling variants between systems still match.
 function nameMatchKey(s) {
   const collapsed = normalizeName(s).replace(/([יו])\1+/g, '$1');
-  return collapsed.split(' ').filter(Boolean).sort().join(' ');
+  // מסיר טוקנים שהם פיסוק גרידא (כמו נקודה בודדת "." שנשארת בקובץ כשהשם
+  // חתוך/לא הושלם במערכת המקור, למשל "יובל .") - אחרת זה נספר כ"מילה" נוספת
+  // בשם ומונע התאמה גם לשם המלא וגם לנפילה החוזרת לפי מילה בודדת.
+  return collapsed.split(' ').filter(Boolean).filter(t => /[א-תa-zA-Z]/.test(t)).sort().join(' ');
 }
 // זוגות שמות שאושרו ידנית מול המשתמש - אותו אדם, אבל כתוב אחרת בקובצי
 // הטלפוניה לעומת רשימת הנציגים אצלנו (לא הבדל כתיב שהנורמליזציה הכללית
@@ -1577,6 +1580,20 @@ const NAME_MATCH_ALIASES = {
 };
 function resolveNameAlias(key) {
   return NAME_MATCH_ALIASES.hasOwnProperty(key) ? NAME_MATCH_ALIASES[key] : key;
+}
+// נפילה חזרה כללית כשאין התאמת שם-מלא: קבצים מסוימים (קבוצת "מפקחים" וכו')
+// נותנים רק מילה אחת מהשם (שם פרטי בלבד, או אפילו רק חלק משם פרטי מורכב כמו
+// "איתמר" מתוך "איתמר אהרון") - אם המילה הזאת מופיעה כטוקן יחיד אצל נציג
+// אחד בדיוק (שם פרטי+משפחה ביחד), מתאימים אליו. לא מנחשים אם יש יותר מאחד.
+function findRowByNameFallback(rowsList, key, getFirst, getLast) {
+  const keyWords = key.split(' ').filter(Boolean);
+  if (keyWords.length !== 1) return null;
+  const word = keyWords[0];
+  const candidates = rowsList.filter(r => {
+    const tokens = nameMatchKey(`${getFirst(r)} ${getLast(r)}`).split(' ');
+    return tokens.includes(word);
+  });
+  return candidates.length === 1 ? candidates[0] : null;
 }
 function normalizeDept(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').replace(/[\u2010-\u2015\u2212]/g, '-');
@@ -2139,14 +2156,8 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
         if (full && full === key) { r[field] = value; any = true; }
       });
       if (!any) {
-        // נפילה חזרה: בקבצים מסוימים (למשל קבוצת "מפקחים" בדוח השיחות) מופיע
-        // רק שם פרטי, בלי שם משפחה. מתאימים לפי שם פרטי בלבד - אבל רק אם הוא
-        // ייחודי (נציג יחיד עם השם הפרטי הזה), כדי לא לשייך בטעות לאדם הלא נכון.
-        const firstNameMatches = rows.filter(r => r.firstName && nameMatchKey(r.firstName) === key);
-        if (firstNameMatches.length === 1) {
-          firstNameMatches[0][field] = value;
-          any = true;
-        }
+        const fallbackRow = findRowByNameFallback(rows, key, r => r.firstName, r => r.lastName);
+        if (fallbackRow) { fallbackRow[field] = value; any = true; }
       }
       return any;
     },
@@ -2597,10 +2608,13 @@ bindFileButton('uploadSurveyBtn', 'surveyInput', (data) => {
     sums[key] = (sums[key] || 0) + scoreVal;
     counts[key] = (counts[key] || 0) + 1;
   }
+  serviceRows.forEach(r => { r.surveyScore = ''; }); // העלאה חדשה מחליפה לגמרי את הקודמת
   let matched = 0;
-  serviceRows.forEach(r => {
-    const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
-    if (full && sums.hasOwnProperty(full)) { r.surveyScore = Math.round((sums[full] / counts[full]) * 100) / 100; matched++; }
+  Object.keys(sums).forEach(rawKey => {
+    const key = resolveNameAlias(rawKey);
+    let row = serviceRows.find(r => nameMatchKey(`${r.firstName} ${r.lastName}`) === key);
+    if (!row) row = findRowByNameFallback(serviceRows, key, r => r.firstName, r => r.lastName);
+    if (row) { row.surveyScore = Math.round((sums[rawKey] / counts[rawKey]) * 100) / 100; matched++; }
   });
   showBanner('ok', `ציון סקרים נטען (ממוצע) ל-${matched} נציגים, לפי התאמת שם מלא.`);
   renderServiceCalcOnly();
@@ -2624,9 +2638,11 @@ bindFileButton('uploadCallsBtn', 'callsInput', (data) => {
   tnuat.resetField('digitalCount');
   meuhedet.resetField('digitalCount');
   let matchedService = 0, matchedTnuat = 0, matchedMeuhedet = 0;
-  serviceRows.forEach(r => {
-    const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
-    if (full && sums.hasOwnProperty(full)) { r.closedCalls = sums[full]; matchedService++; }
+  Object.keys(sums).forEach(rawKey => {
+    const key = resolveNameAlias(rawKey);
+    let row = serviceRows.find(r => nameMatchKey(`${r.firstName} ${r.lastName}`) === key);
+    if (!row) row = findRowByNameFallback(serviceRows, key, r => r.firstName, r => r.lastName);
+    if (row) { row.closedCalls = sums[rawKey]; matchedService++; }
   });
   Object.keys(sums).forEach(key => {
     if (tnuat.setByFullName(key, 'digitalCount', sums[key])) matchedTnuat++;
