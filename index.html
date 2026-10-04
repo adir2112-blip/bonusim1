@@ -2769,8 +2769,23 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
     tnuat.setByFullName(key, 'callsHours', hoursSums[key]);
     meuhedet.setByFullName(key, 'callsHours', hoursSums[key]);
   });
-  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). <b style="color:#000">מובמנט</b>: ${matchedT} נציגים. <b style="color:#000">מאוחדת</b>: ${matchedM} נציגים.`);
+
+  // ג'וליאן דהן (פריפיט שירות) עובד גם בטלפון ומופיע בדוח הטלפוניה הזה -
+  // לא במובמנט/מאוחדת בכלל. סוכם עם המשתמש: השיחות שלו משם (נענות+יוצאות,
+  // אותה נוסחה כמו מובמנט) נכנסות ל"שיחות שנענו" בפריפיט שירות - וזה היחיד
+  // שמטופל ככה. closedCalls/extraTasks נשארים 0 אצלו, אז הנוסחה הרגילה
+  // (closedCalls+answeredCalls+extraTasks)/netCallHours יוצאת answeredCalls/שעות עבודה כמו שצריך.
+  let matchedJulian = 0;
+  const julianFileKey = nameMatchKey('גיוליאן');
+  const julianSumKey = Object.keys(sums).find(k => nameMatchKey(k) === julianFileKey);
+  if (julianSumKey) {
+    const julianRow = serviceRows.find(r => nameMatchKey(`${r.firstName} ${r.lastName}`) === nameMatchKey("ג'וליאן דהן"));
+    if (julianRow) { julianRow.answeredCalls = sums[julianSumKey]; matchedJulian = 1; }
+  }
+
+  showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). <b style="color:#000">מובמנט</b>: ${matchedT} נציגים. <b style="color:#000">מאוחדת</b>: ${matchedM} נציגים.${matchedJulian ? ' <b style="color:#000">ג\'וליאן דהן</b> (פריפיט שירות): עודכן.' : ''}`);
   tnuat.refresh(); meuhedet.refresh();
+  if (matchedJulian) renderServiceCalcOnly();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
   scheduleSave();
 });
