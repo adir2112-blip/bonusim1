@@ -2785,7 +2785,9 @@ bindFileButton('uploadMvCallsBtn', 'mvCallsInput', (data) => {
 
   showBanner('ok', `שיחות טלפוניות נטענו (נכנסות+יוצאות, כולל שעות חיבור לחלוקת שעות דיגיטל). <b style="color:#000">מובמנט</b>: ${matchedT} נציגים. <b style="color:#000">מאוחדת</b>: ${matchedM} נציגים.${matchedJulian ? ' <b style="color:#000">ג\'וליאן דהן</b> (פריפיט שירות): עודכן.' : ''}`);
   tnuat.refresh(); meuhedet.refresh();
-  if (matchedJulian) renderServiceCalcOnly();
+  // renderServiceCalcOnly לבדו לא מעדכן את ערך שדה הקלט answeredCalls עצמו
+  // (רק תאים מחושבים) - צריך renderService המלא כדי שהמספר החדש יוצג בפועל.
+  if (matchedJulian) renderService();
   if (matchedT > 0 || matchedM > 0) markUploaded('mv_calls');
   scheduleSave();
 });
