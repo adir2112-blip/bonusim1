@@ -3525,16 +3525,35 @@ async function refreshAgentsSummary() {
     }
 
     rows.sort((a, b) => a.fullName.localeCompare(b.fullName, 'he'));
-    rows.forEach(({ agent, fullName, bonus }) => {
+    rows.forEach(({ agent, fullName, bonus, point }) => {
       const tr = document.createElement('tr');
       tr.dataset.agentId = agent.id;
       if (selectedAgent && selectedAgent.id === agent.id) tr.classList.add('selected');
+      const canSend = !!(point && agent.phone);
       tr.innerHTML = `
         <td>${fullName || '(ללא שם)'}</td>
         <td>${DEPT_LABELS[agent.department] || agent.department}</td>
         <td class="num">${bonus === null ? '—' : fmt(bonus, 0) + ' ₪'}</td>
-        <td><button class="agent-select-btn">צפה במגמה</button></td>
+        <td style="display:flex; gap:6px; align-items:center;">
+          <button class="agent-select-btn">צפה במגמה</button>
+          <button class="agent-whatsapp-btn" data-agent-id="${agent.id}" title="${canSend ? 'שלח בונוס בוואטסאפ לנציג זה בלבד' : (agent.phone ? 'אין נתוני בונוס לחודש זה' : 'אין מספר טלפון')}" ${canSend ? '' : 'disabled'} style="padding:6px 10px; font-size:12.5px;">📲</button>
+        </td>
       `;
+      tr.querySelector('.agent-select-btn').addEventListener('click', (e) => { e.stopPropagation(); selectAgent(agent); });
+      const waBtn = tr.querySelector('.agent-whatsapp-btn');
+      if (canSend) {
+        waBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showModal(
+            'שליחת בונוס',
+            `לשלוח בוואטסאפ לנציג/ה ${fullName || agent.emp_id} את בונוס ${monthLabel(point.month)} (${fmt(point.total, 0)} ₪)?`,
+            [
+              { label: 'ביטול', style: { background: 'var(--surface)' } },
+              { label: 'כן, שלח', style: { background: 'var(--accent-service)', color: '#fff', borderColor: 'var(--accent-service)' }, onClick: () => sendSingleAgentWhatsApp(agent, point, fullName, waBtn) },
+            ]
+          );
+        });
+      }
       tr.addEventListener('click', () => selectAgent(agent));
       tbody.appendChild(tr);
     });
@@ -3966,6 +3985,27 @@ async function runBulkWhatsAppSend(targets) {
   btn.disabled = false;
   btn.textContent = 'שלח בונוס לכולם (מסונן)';
   showBanner(failed === 0 ? 'ok' : 'error', `נשלחו ${sent} הודעות בהצלחה. ${failed ? failed + ' נכשלו.' : ''}`);
+}
+
+// שליחה לנציג/ה בודד/ת ישירות מרשימת הנציגים, בלי לעבור דרך "צפה במגמה".
+async function sendSingleAgentWhatsApp(agent, point, fullName, btn) {
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const message = buildWhatsAppMessage(agent, point);
+    const result = await sendWhatsAppMessage(agent.phone, message);
+    await logMessage(agent, point, message, result);
+    showBanner(result.ok ? 'ok' : 'error', result.ok
+      ? `ההודעה נשלחה ל-${fullName || agent.emp_id}.`
+      : `השליחה ל-${fullName || agent.emp_id} נכשלה.`);
+  } catch (err) {
+    console.error(err);
+    showBanner('error', `שגיאה בשליחה ל-${fullName || agent.emp_id}.`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
 }
 
 /* ================= WORK DAYS SETTINGS TAB ================= */
