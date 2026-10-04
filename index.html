@@ -1566,6 +1566,18 @@ function nameMatchKey(s) {
   const collapsed = normalizeName(s).replace(/([יו])\1+/g, '$1');
   return collapsed.split(' ').filter(Boolean).sort().join(' ');
 }
+// זוגות שמות שאושרו ידנית מול המשתמש - אותו אדם, אבל כתוב אחרת בקובצי
+// הטלפוניה לעומת רשימת הנציגים אצלנו (לא הבדל כתיב שהנורמליזציה הכללית
+// תופסת - שם פרטי/משפחה שונה לגמרי). "file" = איך שמופיע בקובץ החיצוני,
+// "real" = איך ששמור אצלנו. מורחב בעת הצורך, רק אחרי אישור מפורש.
+const NAME_MATCH_ALIASES = {
+  [nameMatchKey('מורין ביטון')]: nameMatchKey('מור ביטון'),
+  [nameMatchKey('מילנה מיכאלוב')]: nameMatchKey('מילנה מיכאילוב'),
+  [nameMatchKey('נועה ואנונו')]: nameMatchKey("נועה תורג'מן"),
+};
+function resolveNameAlias(key) {
+  return NAME_MATCH_ALIASES.hasOwnProperty(key) ? NAME_MATCH_ALIASES[key] : key;
+}
 function normalizeDept(s) {
   return String(s || '').trim().replace(/\s+/g, ' ').replace(/[\u2010-\u2015\u2212]/g, '-');
 }
@@ -2121,7 +2133,7 @@ function makeMovementInstance(tableId, totalAgentsId, totalBonusId, addBtnId, de
     },
     setByFullName: (fullName, field, value) => {
       let any = false;
-      const key = nameMatchKey(fullName);
+      const key = resolveNameAlias(nameMatchKey(fullName));
       rows.forEach(r => {
         const full = nameMatchKey(`${r.firstName} ${r.lastName}`);
         if (full && full === key) { r[field] = value; any = true; }
