@@ -5660,18 +5660,41 @@ async function computeTekinaReportItem(item, batchId) {
 
 // ימי עבודה בפועל (בניכוי חגים) לטווח התאריכים של הדיווח כולו - אותו טווח
 // עבודה משותף לכל 5 הפעילויות בדיווח הזה, לכן מחושב פעם אחת, לא לכל שורה.
+// מחזיר גם rangeEnd (לא רק את מספר ימי העבודה) - נדרש לחישוב "בסיס ידני"
+// (ראה computeEffectiveWorkDays) שממשיך לספור ימי עבודה חדשים מעבר לתאריך
+// שבו המשתמש הזין ערך ידני, במקום שהערך יקפא במקום.
 async function computeBatchWorkDays(batchId) {
   const { data: allEmps, error } = await sb.from('reflection_employees').select('id').eq('batch_id', batchId);
   if (error) throw error;
   const allEmpIds = (allEmps || []).map(e => e.id);
-  if (!allEmpIds.length) return 0;
+  if (!allEmpIds.length) return { workDays: 0, rangeEnd: null };
   const rangeRows = await fetchAllRows(sb.from('reflection_days').select('work_date').in('employee_id', allEmpIds));
   const dates = rangeRows.map(r => r.work_date).filter(Boolean).sort();
-  if (!dates.length) return 0;
+  if (!dates.length) return { workDays: 0, rangeEnd: null };
   const rangeStart = dates[0], rangeEnd = dates[dates.length - 1];
   const { data: hRows } = await sb.from('pipeline_holidays').select('date').gte('date', rangeStart).lte('date', rangeEnd);
   const holidayDates = new Set((hRows || []).map(h => h.date));
-  return businessDaysBetween(rangeStart, rangeEnd, holidayDates);
+  return { workDays: businessDaysBetween(rangeStart, rangeEnd, holidayDates), rangeEnd };
+}
+
+// "בסיס ידני": כשהמשתמש מזין ערך ידני ל"ימי עבודה", הוא לא נשאר קבוע לנצח -
+// הוא הופך לבסיס חדש, ומכאן והלאה ממשיכים לספור עליו רק ימי עבודה *חדשים*
+// שעברו מאז (bLineDate ועד rangeEnd הנוכחי), כדי שזה ימשיך "לזוז" כמו אצל
+// כולם, פשוט עם התיקון הידני כנקודת פתיחה.
+function addOneDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+async function computeEffectiveWorkDays(defaultWorkDays, rangeEnd, saved) {
+  const hasBaseline = saved && saved.workdays !== null && saved.workdays !== undefined && saved.workdays_baseline_date;
+  if (!hasBaseline || !rangeEnd) return defaultWorkDays;
+  if (saved.workdays_baseline_date >= rangeEnd) return Number(saved.workdays); // אין עדיין ימים חדשים מאז
+  const from = addOneDay(saved.workdays_baseline_date);
+  const { data: hRows } = await sb.from('pipeline_holidays').select('date').gte('date', from).lte('date', rangeEnd);
+  const holidayDates = new Set((hRows || []).map(h => h.date));
+  const newDays = businessDaysBetween(from, rangeEnd, holidayDates);
+  return Number(saved.workdays) + newDays;
 }
 
 function recalcTekinaReportRow(tr, totalHours) {
@@ -5757,8 +5780,8 @@ async function renderTekinaReportForMonth(monthKey) {
       return;
     }
 
-    const [{ data: dailyRows }, { data: transferRows }, defaultWorkDays] = await Promise.all([
-      sb.from('tekina_report_daily').select('department, value, workdays').eq('month', monthKey),
+    const [{ data: dailyRows }, { data: transferRows }, { workDays: defaultWorkDays, rangeEnd }] = await Promise.all([
+      sb.from('tekina_report_daily').select('department, value, workdays, workdays_baseline_date').eq('month', monthKey),
       sb.from('tekina_report_transfers').select('from_department, to_department, amount').eq('month', monthKey),
       computeBatchWorkDays(entry.batchId),
     ]);
@@ -5791,7 +5814,7 @@ async function renderTekinaReportForMonth(monthKey) {
       grandTotal += displayedHours;
       const saved = dailyByDept.get(item.department);
       const dailyVal = saved && saved.value !== null && saved.value !== undefined ? saved.value : '';
-      const workdaysVal = saved && saved.workdays !== null && saved.workdays !== undefined ? saved.workdays : defaultWorkDays;
+      const workdaysVal = await computeEffectiveWorkDays(defaultWorkDays, rangeEnd, saved);
       const otherOptions = items.filter(i => i.department !== item.department)
         .map(i => `<option value="${i.department}">${i.dept_label}</option>`).join('');
 
@@ -5842,7 +5865,11 @@ async function renderTekinaReportForMonth(monthKey) {
       workdaysInput.addEventListener('change', async () => {
         recalcTekinaReportRow(tr, displayedHours);
         const workdays = workdaysInput.value === '' ? null : Number(workdaysInput.value);
-        await sb.from('tekina_report_daily').upsert({ department: item.department, month: monthKey, workdays, updated_at: new Date().toISOString() }, { onConflict: 'department,month' });
+        // התאריך שממנו ממשיכים לספור ימי עבודה *חדשים* מעל הערך הידני הזה
+        // (ראה computeEffectiveWorkDays) - "עכשיו" מבחינת הדוח הוא rangeEnd
+        // (התאריך האחרון שיש לו בפועל נתוני נוכחות בדיווח הנוכחי).
+        const workdays_baseline_date = workdays === null ? null : rangeEnd;
+        await sb.from('tekina_report_daily').upsert({ department: item.department, month: monthKey, workdays, workdays_baseline_date, updated_at: new Date().toISOString() }, { onConflict: 'department,month' });
       });
 
       tr.querySelector('.tekina-transfer-btn').addEventListener('click', async () => {
@@ -5923,7 +5950,7 @@ async function loadTekinaByMonth() {
       const parts = [];
       for (const monthKey of monthKeys) {
         const batchId = batchIdByMonth.get(monthKey);
-        const [computed, workDays] = await Promise.all([
+        const [computed, { workDays }] = await Promise.all([
           computeTekinaReportItem(item, batchId),
           computeBatchWorkDays(batchId),
         ]);
