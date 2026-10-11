@@ -5945,16 +5945,37 @@ async function loadTekinaByMonth() {
     for (const b of batches) batchIdByMonth.set(b.created_at.slice(0, 7), b.id);
     const monthKeys = [...batchIdByMonth.keys()].sort((a, b) => b.localeCompare(a)); // החדש ביותר קודם
 
+    // לכל חודש: אותם נתוני בסיס (ימי עבודה אפקטיביים כולל בסיס ידני, ומעברי
+    // שעות) שבהם משתמש "דוח תקינה אדיר" - כדי שהתצוגה המצטברת כאן תמיד
+    // תשקף מה שמעודכן שם, ולא תחשב ערך אחר במקביל. בסוף חודש שלם, rangeEnd
+    // הוא היום האחרון שיש לו נתוני נוכחות באותו חודש - ממילא היום האחרון בו.
+    const monthCache = new Map();
+    for (const monthKey of monthKeys) {
+      const batchId = batchIdByMonth.get(monthKey);
+      const [{ workDays: defaultWorkDays, rangeEnd }, { data: dailyRows }, { data: transferRows }] = await Promise.all([
+        computeBatchWorkDays(batchId),
+        sb.from('tekina_report_daily').select('department, workdays, workdays_baseline_date').eq('month', monthKey),
+        sb.from('tekina_report_transfers').select('from_department, to_department, amount').eq('month', monthKey),
+      ]);
+      const dailyByDept = new Map((dailyRows || []).map(r => [r.department, r]));
+      const adjustmentByDept = new Map();
+      for (const t of (transferRows || [])) {
+        adjustmentByDept.set(t.to_department, (adjustmentByDept.get(t.to_department) || 0) + Number(t.amount));
+        adjustmentByDept.set(t.from_department, (adjustmentByDept.get(t.from_department) || 0) - Number(t.amount));
+      }
+      monthCache.set(monthKey, { batchId, defaultWorkDays, rangeEnd, dailyByDept, adjustmentByDept });
+    }
+
     tbody.innerHTML = '';
     for (const item of items) {
       const parts = [];
       for (const monthKey of monthKeys) {
-        const batchId = batchIdByMonth.get(monthKey);
-        const [computed, { workDays }] = await Promise.all([
-          computeTekinaReportItem(item, batchId),
-          computeBatchWorkDays(batchId),
-        ]);
-        if (workDays > 0) parts.push(`${tekinaMonthLabel(monthKey)}: ${fmtTekina(computed.totalHours / 9 / workDays)}`);
+        const { batchId, defaultWorkDays, rangeEnd, dailyByDept, adjustmentByDept } = monthCache.get(monthKey);
+        const computed = await computeTekinaReportItem(item, batchId);
+        const saved = dailyByDept.get(item.department);
+        const workDays = await computeEffectiveWorkDays(defaultWorkDays, rangeEnd, saved);
+        const displayedHours = computed.totalHours + (adjustmentByDept.get(item.department) || 0);
+        if (workDays > 0) parts.push(`${tekinaMonthLabel(monthKey)}: ${fmtTekina(displayedHours / 9 / workDays)}`);
       }
       const tr = document.createElement('tr');
       tr.innerHTML = `
