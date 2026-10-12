@@ -5380,6 +5380,7 @@ async function computeTekinaForDept(setting) {
   if (batchErr) throw batchErr;
   if (!batches || !batches.length) return null;
   const batchId = batches[0].id;
+  const monthKey = batches[0].created_at.slice(0, 7);
 
   const { data: allEmps, error: allEmpErr } = await sb.from('reflection_employees').select('id, department').eq('batch_id', batchId);
   if (allEmpErr) throw allEmpErr;
@@ -5409,13 +5410,33 @@ async function computeTekinaForDept(setting) {
     const { data: hRows } = await sb.from('pipeline_holidays').select('date').gte('date', rangeStart).lte('date', rangeEnd);
     holidayDates = new Set((hRows || []).map(h => h.date));
   }
-  const workDays = (rangeStart && rangeEnd) ? businessDaysBetween(rangeStart, rangeEnd, holidayDates) : 0;
+  const rawWorkDays = (rangeStart && rangeEnd) ? businessDaysBetween(rangeStart, rangeEnd, holidayDates) : 0;
 
-  const actual = workDays > 0 ? (totalHours / workDays / (setting.divisor_hours || 9)) : 0;
+  // מתואם ל"דוח תקינה אדיר": אם הוגדר שם ערך ידני ל"ימי עבודה" למחלקה הזו
+  // באותו חודש (tekina_report_daily), או שהועברו לה/ממנה שעות בין-מחלקתיות
+  // (tekina_report_transfers) - אותם תיקונים חייבים לחול גם כאן, כדי שהודעת
+  // הוואטסאפ תציג בדיוק את מה שמוצג בדוח ולא מספר שונה. ההתאמה בין הטבלאות
+  // נעשית לפי dept_filter, שהוא אותו ערך בשני המקומות לאותה מחלקה אמיתית.
+  let workDays = rawWorkDays;
+  let displayedHours = totalHours;
+  const { data: reportItem } = await sb.from('tekina_report_items').select('department').eq('dept_filter', setting.dept_filter).maybeSingle();
+  if (reportItem) {
+    const { data: savedDaily } = await sb.from('tekina_report_daily').select('workdays, workdays_baseline_date').eq('department', reportItem.department).eq('month', monthKey).maybeSingle();
+    workDays = await computeEffectiveWorkDays(rawWorkDays, rangeEnd, savedDaily);
+    const { data: transferRows } = await sb.from('tekina_report_transfers').select('from_department, to_department, amount').eq('month', monthKey);
+    let adjustment = 0;
+    for (const t of (transferRows || [])) {
+      if (t.to_department === reportItem.department) adjustment += Number(t.amount);
+      if (t.from_department === reportItem.department) adjustment -= Number(t.amount);
+    }
+    displayedHours = totalHours + adjustment;
+  }
+
+  const actual = workDays > 0 ? (displayedHours / workDays / (setting.divisor_hours || 9)) : 0;
   const percent = setting.target_employees > 0 ? (actual / setting.target_employees) * 100 : 0;
 
   return {
-    batchLabel: batches[0].label, rangeStart, rangeEnd, workDays, totalHours,
+    batchLabel: batches[0].label, rangeStart, rangeEnd, workDays, totalHours: displayedHours,
     employeeCount: includedIds.length, excludedCount: (deptEmps || []).length - includedIds.length,
     actual, percent,
   };
