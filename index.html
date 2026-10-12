@@ -5613,7 +5613,7 @@ function renderTekinaCard(setting, computed) {
     status.textContent = 'שומר…';
     const excludeNames = card.querySelector(`#${uid}_exclude`).value.split(',').map(s => s.trim()).filter(Boolean);
     const sendDays = Array.from(card.querySelectorAll(`.tekina-day-cb[data-uid="${uid}"]:checked`)).map(cb => Number(cb.value));
-    const { error } = await sb.from('tekina_settings').update({
+    const { data: updated, error } = await sb.from('tekina_settings').update({
       target_employees: Number(card.querySelector(`#${uid}_targetEmp`).value) || setting.target_employees,
       target_hours_per_employee: Number(card.querySelector(`#${uid}_targetHours`).value) || setting.target_hours_per_employee,
       phone1: card.querySelector(`#${uid}_phone1`).value.trim(),
@@ -5624,9 +5624,14 @@ function renderTekinaCard(setting, computed) {
       exclude_names: excludeNames,
       message_template: card.querySelector(`#${uid}_template`).value,
       updated_at: new Date().toISOString(),
-    }).eq('department', setting.department);
-    status.textContent = error ? 'שגיאה בשמירה.' : '✓ נשמר.';
-    if (!error) await loadTekinaCards();
+    }).eq('department', setting.department).select().single();
+    if (error) { status.textContent = 'שגיאה בשמירה.'; return; }
+    // מרענן רק את הכרטיס הזה (לא את כל הרשימה עם loadTekinaCards) - כדי
+    // ששמירה במחלקה אחת לא תגרום הבהוב/איפוס גלילה בכל שאר הכרטיסים.
+    const freshComputed = await computeTekinaForDept(updated);
+    const newCard = renderTekinaCard(updated, freshComputed);
+    newCard.querySelector(`#${uid}_status`).textContent = '✓ נשמר.';
+    card.replaceWith(newCard);
   });
 
   card.querySelector('.tekina-send-btn').addEventListener('click', async () => {
