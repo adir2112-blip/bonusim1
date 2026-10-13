@@ -588,6 +588,26 @@
     .print-only-title { display: block; font-size: 20px; font-weight: 700; margin-bottom: 18px; color: #111; }
     .summary-table-card { border: none; box-shadow: none; }
   }
+
+  /* ===== מובייל (אייפון/אנדרואיד) =====
+     התפריט העליון, הטבלאות הרחבות (עם table-scroll) והמודלים כבר עובדים
+     בלי שינוי כאן (רוחב יחסי/overflow-x קיימים). התיקון האמיתי: .stat
+     עם overflow:hidden קוטע ערכים כמו "119.66%" כששלושה stat-ים נדחסים
+     בשורה אחת ברוחב טלפון (~61px תוכן זמין מול ~99px טקסט) - כאן פורסים
+     אותם לשתיים בשורה במקום שלוש, ומגדילים קצת יעדי מגע לכפתורים. */
+  @media (max-width: 480px) {
+    body { padding: 18px 12px 60px; }
+    header { padding: 16px 18px; }
+    h1 { font-size: 19px; }
+    .top-nav { gap: 2px; padding: 5px; }
+    .nav-tab { padding: 8px 11px; font-size: 12px; }
+    .global-toolbar { padding: 12px; gap: 10px; }
+    button { padding: 10px 14px; font-size: 13.5px; min-height: 40px; }
+    .icon-btn { min-height: 0; }
+    .totals { flex-wrap: wrap; gap: 8px; }
+    .stat { flex: 1 1 calc(50% - 4px); min-width: 0; padding: 14px 14px 13px; }
+    .stat .value { font-size: 21px; }
+  }
 </style>
 </head>
 <body>
