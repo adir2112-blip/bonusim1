@@ -1482,7 +1482,8 @@
               <th>שם הפעילות</th>
               <th>עובדים שסיננת</th>
               <th>תקינה יומית (ידני)</th>
-              <th>שעות נוכח לשכר</th>
+              <th>שעות נוכח לשכר (גולמי)</th>
+              <th style="font-weight:800; background:var(--accent-movement-bg);">שעות נוכח לשכר לאחר מעבר שעות</th>
               <th>ימי עבודה</th>
               <th>תקן (יומי × ימי עבודה)</th>
               <th>% עמידה ביעד</th>
@@ -1494,6 +1495,7 @@
           <tfoot>
             <tr>
               <td style="font-weight:700;">סה"כ</td>
+              <td></td>
               <td></td>
               <td></td>
               <td id="tekinaReportTotal" style="font-weight:700;"></td>
@@ -5884,7 +5886,8 @@ async function renderTekinaReportForMonth(monthKey) {
         <td style="font-weight:600;">${item.dept_label}</td>
         <td>${computed.excludedNames.length ? computed.excludedNames.join(', ') : '<span class="muted">— (כולם נכללים)</span>'}</td>
         <td><input type="number" step="0.01" class="tekina-daily-input" data-dept="${item.department}" style="width:100px;" value="${dailyVal}" /></td>
-        <td class="tekina-hours-cell">${fmtTekina(displayedHours)}</td>
+        <td>${fmtTekina(computed.totalHours)}</td>
+        <td class="tekina-hours-cell" style="font-weight:800; background:var(--accent-movement-bg);">${fmtTekina(displayedHours)}</td>
         <td><input type="number" step="1" class="tekina-workdays-input" data-dept="${item.department}" style="width:80px;" value="${workdaysVal}" /></td>
         <td class="tekina-target-cell"></td>
         <td class="tekina-percent-cell"></td>
