@@ -5619,7 +5619,7 @@ function renderTekinaCard(setting, computed) {
     </label>
     <label class="hint" style="display:block; margin-bottom:4px;">שמות להחריג מהחישוב (מופרדים בפסיק)</label>
     <input type="text" id="${uid}_exclude" style="width:100%; margin-bottom:14px;" value="${(setting.exclude_names || []).join(', ')}" />
-    <label class="hint" style="display:block; margin-bottom:4px;">תבנית הודעה (אפשר להשתמש ב-{מחלקה} {ערך} {תקן} {אחוז})</label>
+    <label class="hint" style="display:block; margin-bottom:4px;">תבנית הודעה (אפשר להשתמש ב-{מחלקה} {ערך} {תקן} {שעות מצטבר} {תקן מצטבר} {אחוז})</label>
     <textarea id="${uid}_template" rows="3" style="width:100%; font-family:inherit; padding:8px; margin-bottom:14px;">${setting.message_template || ''}</textarea>
     <div style="display:flex; gap:10px; align-items:center;">
       <button class="primary-movement tekina-save-btn" data-uid="${uid}" data-dept="${setting.department}">💾 שמור</button>
@@ -5660,11 +5660,17 @@ function renderTekinaCard(setting, computed) {
     try {
       const fresh = await computeTekinaForDept(setting);
       if (!fresh || fresh.empty) { status.textContent = 'אין נתונים לשליחה.'; return; }
+      // שעות מצטבר = fresh.totalHours כבר מחושב מ-rangeStart (תחילת החודש)
+      // עד rangeEnd (אתמול) - זה כבר בדיוק מצטבר מתחילת החודש, לא צריך
+      // חישוב נוסף. תקן מצטבר הוא אותו תקן יומי מוכפל בימי העבודה באותו טווח.
+      const cumulativeTargetHours = setting.target_employees * setting.target_hours_per_employee * fresh.workDays;
       const template = card.querySelector(`#${uid}_template`).value;
       const message = template
         .replaceAll('{מחלקה}', setting.dept_label)
         .replaceAll('{ערך}', fmtTekina(fresh.actual))
         .replaceAll('{תקן}', fmtTekina(setting.target_employees))
+        .replaceAll('{שעות מצטבר}', fmtTekina(fresh.totalHours))
+        .replaceAll('{תקן מצטבר}', fmtTekina(cumulativeTargetHours))
         .replaceAll('{אחוז}', fmtTekina(fresh.percent));
       const phones = [card.querySelector(`#${uid}_phone1`).value.trim(), card.querySelector(`#${uid}_phone2`).value.trim()].filter(Boolean);
       if (!phones.length) { status.textContent = 'אין מספרי טלפון מוגדרים.'; return; }
