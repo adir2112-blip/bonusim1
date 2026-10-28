@@ -3100,6 +3100,8 @@ async function loadMonth(month) {
 
     const { data: agents, error: agentsErr } = await sb.from('agents').select('*');
     if (agentsErr) throw agentsErr;
+    // גיבוי: ספר הטלפונים המרכזי עבור נציגים שאין להם טלפון ב-agents
+    const contactPhones = await getAllContactPhones();
 
     const { data: records, error: recErr } = await sb
       .from('monthly_records')
@@ -3120,7 +3122,7 @@ async function loadMonth(month) {
         empId: a.emp_id,
         firstName: a.first_name || '',
         lastName: a.last_name || '',
-        phone: a.phone || '',
+        phone: a.phone || contactPhones[String(a.emp_id).trim()] || '',
         ...monthly,
         isTemp: !!a.is_temp // roster field - overrides any stale isTemp left in old monthly data
       };
@@ -3231,12 +3233,14 @@ async function createNewMonth(targetMonth) {
     showBanner('error', 'שגיאה בשליפת רשימת הנציגים. נסה שוב.');
     return;
   }
+  const contactPhones = await getAllContactPhones();
 
   const byDept = { sales: [], service: [], tnuat: [], meuhedet: [] };
   allAgents.forEach(a => {
     if (!byDept.hasOwnProperty(a.department)) return;
     byDept[a.department].push({
-      id: uid(), empId: a.emp_id, firstName: a.first_name || '', lastName: a.last_name || '', phone: a.phone || '',
+      id: uid(), empId: a.emp_id, firstName: a.first_name || '', lastName: a.last_name || '',
+      phone: a.phone || contactPhones[String(a.emp_id).trim()] || '',
       isTemp: !!a.is_temp,
       ...blankMonthlyDefaultsFor(a.department)
     });
