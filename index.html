@@ -5838,12 +5838,19 @@ async function renderTekinaReportForMonth(monthKey) {
       return;
     }
 
-    const [{ data: dailyRows }, { data: transferRows }, { workDays: defaultWorkDays, rangeEnd }] = await Promise.all([
+    const [{ data: dailyRows }, { data: transferRows }, { workDays: defaultWorkDays, rangeEnd }, { data: prevDailyRows }] = await Promise.all([
       sb.from('tekina_report_daily').select('department, value, workdays, workdays_baseline_date').eq('month', monthKey),
       sb.from('tekina_report_transfers').select('from_department, to_department, amount').eq('month', monthKey),
       computeBatchWorkDays(entry.batchId),
+      sb.from('tekina_report_daily').select('department, month, value').lt('month', monthKey).not('value', 'is', null).order('month', { ascending: false }),
     ]);
     const dailyByDept = new Map((dailyRows || []).map(r => [r.department, r]));
+    // תקינה יומית שלא הוגדרה לחודש הזה ממשיכה מהחודש האחרון שהוגדרה בו -
+    // שינוי ידני כאן נשמר לחודש הזה בלבד וממנו ממשיכים החודשים הבאים.
+    const prevDailyValueByDept = new Map();
+    for (const r of (prevDailyRows || [])) {
+      if (!prevDailyValueByDept.has(r.department)) prevDailyValueByDept.set(r.department, r.value);
+    }
     const deptLabel = new Map(items.map(i => [i.department, i.dept_label]));
 
     // לכל מחלקה: הפרש נטו, ורשימת "קיבלתי מ-" / "העברתי ל-" מקובצת לפי הצד השני
@@ -5871,7 +5878,8 @@ async function renderTekinaReportForMonth(monthKey) {
       const displayedHours = computed.totalHours + adjustment;
       grandTotal += displayedHours;
       const saved = dailyByDept.get(item.department);
-      const dailyVal = saved && saved.value !== null && saved.value !== undefined ? saved.value : '';
+      const dailyVal = saved && saved.value !== null && saved.value !== undefined ? saved.value
+        : (prevDailyValueByDept.has(item.department) ? prevDailyValueByDept.get(item.department) : '');
       const workdaysVal = await computeEffectiveWorkDays(defaultWorkDays, rangeEnd, saved);
       const otherOptions = items.filter(i => i.department !== item.department)
         .map(i => `<option value="${i.department}">${i.dept_label}</option>`).join('');
