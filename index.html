@@ -1277,6 +1277,7 @@
         <select id="reflectionDeptFilter">
           <option value="all">הכל</option>
         </select>
+        <button id="reflectionExportBtn" title="מייצא את הנציגים לפי סינון המחלקה הנוכחי">📥 ייצוא לאקסל</button>
       </div>
       <div class="divider-v"></div>
       <div class="toolbar-group">
@@ -4987,6 +4988,108 @@ document.getElementById('reflectionInput').addEventListener('change', async (e) 
 });
 
 document.getElementById('reflectionDeptFilter').addEventListener('change', renderReflectionTable);
+
+// SheetJS הרגיל (בראש הדף) לא כותב עיצוב לקובץ - טוענים את xlsx-js-style
+// (fork תואם שכן כותב צבעים/גבולות/גופנים) רק בזמן ייצוא, ומחזירים את
+// window.XLSX המקורי כדי לא לשנות את קריאת הקבצים בשאר המערכת.
+let styledXlsxPromise = null;
+function loadStyledXlsx() {
+  if (!styledXlsxPromise) {
+    styledXlsxPromise = new Promise((resolve, reject) => {
+      const original = window.XLSX;
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+      s.onload = () => { const styled = window.XLSX; window.XLSX = original; resolve(styled); };
+      s.onerror = () => { window.XLSX = original; styledXlsxPromise = null; reject(new Error('טעינת ספריית האקסל נכשלה')); };
+      document.head.appendChild(s);
+    });
+  }
+  return styledXlsxPromise;
+}
+
+document.getElementById('reflectionExportBtn').addEventListener('click', async () => {
+  const banner = document.getElementById('reflectionBanner');
+  const list = currentReflectionFilterList();
+  if (!list.length) {
+    banner.innerHTML = '<div class="banner error">אין נציגים לייצוא בסינון הנוכחי.</div>';
+    return;
+  }
+  let XS;
+  try {
+    XS = await loadStyledXlsx();
+  } catch (err) {
+    banner.innerHTML = `<div class="banner error">${err.message}. בדוק חיבור ונסה שוב.</div>`;
+    return;
+  }
+
+  const deptFilter = document.getElementById('reflectionDeptFilter').value;
+  const batchSel = document.getElementById('reflectionBatchSelect');
+  const batchLabel = batchSel.selectedOptions[0] ? batchSel.selectedOptions[0].textContent : '';
+  const deptText = deptFilter === 'all' ? 'כל המחלקות' : deptFilter;
+  const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const statusText = e => e.approvedAt ? 'אושר' : e.disputedAt ? `דווחה טעות: ${e.disputeNote || ''}` : e.sentAt ? 'ממתין לאישור' : 'לא נשלח';
+
+  const headers = ['שם', 'ת"ז', 'מחלקה', 'טלפון', 'ימי עבודה', 'סה"כ שעות', 'ימי היעדרות', 'מעבר שעות', 'תאריך שליחה', 'סטטוס'];
+  const sorted = [...list].sort((a, b) => (a.dept || '').localeCompare(b.dept || '', 'he') || (a.fullName || '').localeCompare(b.fullName || '', 'he'));
+  const body = sorted.map(e => [
+    e.fullName || '',
+    e.empId,
+    e.dept || '',
+    reflectionPhoneByEmpId[e.empId] || '',
+    e.workedDays,
+    round2(e.totalHours),
+    e.leaveDays,
+    e.transferHours ? round2(e.transferHours) : '',
+    e.sentAt ? new Date(e.sentAt).toLocaleDateString('he-IL') : '',
+    statusText(e),
+  ]);
+  const sum = idx => round2(body.reduce((s, r) => s + (Number(r[idx]) || 0), 0));
+  const totalRow = [`סה"כ (${body.length} נציגים)`, '', '', '', sum(4), sum(5), sum(6), sum(7) || '', '', ''];
+
+  const title = `שיקוף שכר - ${batchLabel} - ${deptText}`;
+  const aoa = [[title], [], headers, ...body, totalRow];
+  const ws = XS.utils.aoa_to_sheet(aoa);
+  const lastCol = headers.length - 1;
+  const headerRow = 2, firstBody = 3, totalIdx = aoa.length - 1;
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }];
+  ws['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 20 }, { wch: 14 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 13 }, { wch: 26 }];
+  ws['!rows'] = [{ hpt: 30 }, { hpt: 8 }, { hpt: 24 }];
+
+  const border = { style: 'thin', color: { rgb: 'D0D7DE' } };
+  const borders = { top: border, bottom: border, left: border, right: border };
+  const font = { name: 'Arial', sz: 11 };
+  const numFmtByCol = { 5: '0.00', 7: '0.00' };
+  for (let r = 0; r < aoa.length; r++) {
+    for (let c = 0; c <= lastCol; c++) {
+      const ref = XS.utils.encode_cell({ r, c });
+      if (!ws[ref]) ws[ref] = { t: 's', v: '' };
+      let s;
+      if (r === 0) {
+        s = { font: { ...font, sz: 15, bold: true, color: { rgb: '1F3A5F' } }, alignment: { horizontal: 'center', vertical: 'center', readingOrder: 2 } };
+      } else if (r === headerRow) {
+        s = { font: { ...font, bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '2E5C8A' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true, readingOrder: 2 }, border: borders };
+      } else if (r === totalIdx) {
+        s = { font: { ...font, bold: true }, fill: { fgColor: { rgb: 'FFF2CC' } }, alignment: { horizontal: c === 0 ? 'right' : 'center', vertical: 'center', readingOrder: 2 }, border: { ...borders, top: { style: 'medium', color: { rgb: '2E5C8A' } } } };
+      } else if (r >= firstBody) {
+        const zebra = (r - firstBody) % 2 === 1;
+        s = { font, alignment: { horizontal: c === 0 || c === 2 || c === lastCol ? 'right' : 'center', vertical: 'center', readingOrder: 2 }, border: borders };
+        if (zebra) s.fill = { fgColor: { rgb: 'F3F6FA' } };
+      } else {
+        continue;
+      }
+      if (numFmtByCol[c] && r >= firstBody && typeof ws[ref].v === 'number') s.numFmt = numFmtByCol[c];
+      ws[ref].s = s;
+    }
+  }
+
+  const wb = XS.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };
+  XS.utils.book_append_sheet(wb, ws, 'שיקוף שכר');
+  const safe = str => String(str).replace(/[\\/:*?"<>|]/g, '-').trim();
+  const filename = `שיקוף_שכר_${safe(batchLabel)}${deptFilter === 'all' ? '' : '_' + safe(deptFilter)}.xlsx`;
+  XS.writeFile(wb, filename);
+  banner.innerHTML = `<div class="banner ok">הקובץ ${filename} הורד עם ${body.length} נציגים (${deptText}).</div>`;
+});
 document.getElementById('reflectionSelectAllCheckbox').addEventListener('change', (e) => {
   currentReflectionFilterList().forEach(x => {
     if (!reflectionPhoneByEmpId[x.empId] || x.sentAt) return;
